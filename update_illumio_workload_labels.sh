@@ -122,28 +122,142 @@ command -v ipcalc >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'ipcalc' 
 echo "所有必要套件已找到。"
 
 
-# --- 用戶輸入 ---
-echo
-echo "請輸入要搜索的條件，可接受的格式範例如下："
-echo "  - 單一 IP:      192.168.1.10"
-echo "  - 主機名:       server.example.com"
-echo "  - CIDR 網段:    10.0.0.0/24"
-echo "  - IP 範圍:      172.16.10.5-172.16.10.20  或  172.16.10.5~172.16.10.20"
-echo "  - IP 前綴:      192.168.1. (匹配 192.168.1.*)"
-echo "  - 多個條件組合 (逗號分隔): 192.168.1.10,server.example.com,10.0.0.0/24,172.16.10.5-172.16.10.20"
+# --- CLI argument parsing ---
+VERSION="1.3.0"
 
-read -e -p "請輸入搜索條件: " SEARCH_TERMS_RAW
-read -e -p "請輸入要添加/設置的新 Label 的數字 ID (例如 878): " NEW_LABEL_ID
+# Defaults
+SEARCH_TERMS_RAW=""
+LABEL_ID=""
+LABEL_KEY=""
+LABEL_VALUE=""
+UPDATE_MODE=""
+NON_INTERACTIVE=0
+DRY_RUN=0
+JSON_OUT=0
+CORRELATION_ID=""
+REASON=""
+AUDIT_FILE="${ILLUMIO_QUARANTINE_AUDIT_FILE:-}"
+PARALLEL=1
+CREDENTIALS_FILE=""
+CLI_PCE_URL=""
+CLI_ORG_ID=""
 
+print_usage() {
+    cat <<'USAGE'
+Usage: update_illumio_workload_labels.sh [OPTIONS]
 
-# --- 輸入驗證 ---
-if [[ -z "$SEARCH_TERMS_RAW" ]]; then
-    echo "錯誤：搜索條件不能為空。" >&2
-    exit 1
+Targets & action:
+  --targets <csv>                     IP/hostname/CIDR/range/prefix (CSV)
+  --label-id <id>                     Numeric Label ID
+  --label-key <k> --label-value <v>   Look up label at runtime (mutually exclusive with --label-id)
+  --mode append|overwrite             Default: append
+
+Automation:
+  --non-interactive                   Skip all prompts
+  --dry-run                           No PUTs; still emit JSON + CEF
+  --json                              Machine-readable JSON to stdout
+  --correlation-id <id>               SIEM incident ID
+  --reason <text>                     Incident/rule description
+  --audit-file <path>                 Append CEF audit line (flock-protected)
+  --parallel <n>                      Concurrent PUTs (1..20, default 1)
+
+Overrides:
+  --credentials-file <path>           Bash file with API_USER/API_PASS/[PCE_URL_BASE/ORG_ID]
+  --pce-url <url>                     Override PCE base URL
+  --org-id <id>                       Override Org ID
+
+Meta:
+  -h, --help                          Show this help
+  -V, --version                       Print version
+
+Env vars (after --credentials-file, before defaults):
+  ILLUMIO_QUARANTINE_API_USER, ILLUMIO_QUARANTINE_API_PASS,
+  ILLUMIO_QUARANTINE_PCE_URL,  ILLUMIO_QUARANTINE_ORG_ID,
+  ILLUMIO_QUARANTINE_AUDIT_FILE
+
+Exit codes:
+  0 success | 2 partial | 3 no match | 4 auth fail | 5 input error | 6 no creds
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --targets)          SEARCH_TERMS_RAW="$2"; shift 2 ;;
+        --label-id)         LABEL_ID="$2";         shift 2 ;;
+        --label-key)        LABEL_KEY="$2";        shift 2 ;;
+        --label-value)      LABEL_VALUE="$2";      shift 2 ;;
+        --mode)             UPDATE_MODE="$2";      shift 2 ;;
+        --non-interactive)  NON_INTERACTIVE=1;     shift ;;
+        --dry-run)          DRY_RUN=1;             shift ;;
+        --json)             JSON_OUT=1;            shift ;;
+        --correlation-id)   CORRELATION_ID="$2";   shift 2 ;;
+        --reason)           REASON="$2";           shift 2 ;;
+        --audit-file)       AUDIT_FILE="$2";       shift 2 ;;
+        --parallel)         PARALLEL="$2";         shift 2 ;;
+        --credentials-file) CREDENTIALS_FILE="$2"; shift 2 ;;
+        --pce-url)          CLI_PCE_URL="$2";      shift 2 ;;
+        --org-id)           CLI_ORG_ID="$2";       shift 2 ;;
+        -h|--help)          print_usage; exit 0 ;;
+        -V|--version)       echo "update_illumio_workload_labels.sh $VERSION"; exit 0 ;;
+        *)
+            echo "ERROR: unknown option: $1" >&2
+            print_usage >&2
+            exit 5 ;;
+    esac
+done
+
+# Validate --parallel
+if ! [[ "$PARALLEL" =~ ^[0-9]+$ ]] || [[ "$PARALLEL" -lt 1 || "$PARALLEL" -gt 20 ]]; then
+    echo "ERROR: --parallel must be an integer in 1..20" >&2; exit 5
 fi
-if ! [[ "$NEW_LABEL_ID" =~ ^[0-9]+$ ]]; then
-    echo "錯誤：Label ID 必須是數字。" >&2
-    exit 1
+
+# Mutual exclusion / combinations for label target
+if [[ -n "$LABEL_ID" && ( -n "$LABEL_KEY" || -n "$LABEL_VALUE" ) ]]; then
+    echo "WARN: both --label-id and --label-key/--label-value given; --label-id takes precedence" >&2
+    LABEL_KEY=""; LABEL_VALUE=""
+fi
+
+if [[ "$NON_INTERACTIVE" == "1" ]]; then
+    [[ -z "$SEARCH_TERMS_RAW" ]] && { echo "ERROR: --targets required" >&2; exit 5; }
+    if [[ -z "$LABEL_ID" ]]; then
+        if [[ -z "$LABEL_KEY" || -z "$LABEL_VALUE" ]]; then
+            echo "ERROR: --label-id or (--label-key and --label-value) required" >&2; exit 5
+        fi
+    fi
+    if [[ -n "$LABEL_ID" ]] && ! [[ "$LABEL_ID" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --label-id must be numeric" >&2; exit 5
+    fi
+    [[ -z "$UPDATE_MODE" ]] && UPDATE_MODE="append"
+    if [[ "$UPDATE_MODE" != "append" && "$UPDATE_MODE" != "overwrite" ]]; then
+        echo "ERROR: --mode must be append or overwrite" >&2; exit 5
+    fi
+fi
+
+load_credentials
+
+
+# Interactive prompts (skipped if --non-interactive)
+if [[ "$NON_INTERACTIVE" != "1" ]]; then
+    if [[ -z "$SEARCH_TERMS_RAW" ]]; then
+        echo "Enter search terms (CSV of IP, hostname, CIDR, range, prefix):"
+        read -e -p "Targets: " SEARCH_TERMS_RAW
+    fi
+    if [[ -z "$LABEL_ID" && ( -z "$LABEL_KEY" || -z "$LABEL_VALUE" ) ]]; then
+        read -e -p "Label ID (numeric, or leave blank to use key/value): " LABEL_ID
+        if [[ -z "$LABEL_ID" ]]; then
+            read -e -p "Label key: "   LABEL_KEY
+            read -e -p "Label value: " LABEL_VALUE
+        fi
+    fi
+fi
+
+# Post-prompt validation (applies in both modes)
+[[ -z "$SEARCH_TERMS_RAW" ]] && { echo "ERROR: empty targets" >&2; exit 5; }
+if [[ -z "$LABEL_ID" && ( -z "$LABEL_KEY" || -z "$LABEL_VALUE" ) ]]; then
+    echo "ERROR: need --label-id or --label-key+--label-value" >&2; exit 5
+fi
+if [[ -n "$LABEL_ID" ]] && ! [[ "$LABEL_ID" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: label id must be numeric" >&2; exit 5
 fi
 
 
