@@ -3,8 +3,10 @@
 **Active goal:** Execute the 18-task plan at
 `docs/superpowers/plans/2026-04-21-fortisiem-integration.md` to ship v1.3.0.
 
-**Execution mode:** NOT YET SELECTED — user will pick between
-subagent-driven or inline at start of next session.
+**Execution mode:** Subagent-driven (B-mode: small tasks compressed to spec-review-only, large tasks keep dual review).
+
+**Progress:** 4/18 tasks complete on branch `v1.3.0-fortisiem`. 19/21 tests green.
+Paused 2026-04-22 for rate-limit breather; resume at Plan Task 5.
 
 **Test runner:** `scripts/run_tests.sh` (exists AFTER Task 1).
 
@@ -16,14 +18,20 @@ Mark each task with its state as work proceeds:
 `[ ]` pending · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Phase 1 — Harness & externalization
-- [ ] **Task 1** — Test harness: bats-core submodules, mock curl, fixtures, `.gitignore`, smoke test
-- [ ] **Task 2** — Externalize credentials (`--credentials-file`, env vars, `load_credentials` with precedence G)
-- [ ] **Task 3** — CLI argument parser (`--targets`, `--label-id`, `--label-key`/`--label-value`, `--parallel`, `--help`, `--version`, etc.)
+- [x] **Task 1** — Test harness: bats-core submodules, mock curl, fixtures, `.gitignore`, smoke test
+      → `ea7fe4e`, `ecc069c` (runner double-run fix), `dbd5730` (+x on scripts)
+- [x] **Task 2** — Externalize credentials (`--credentials-file`, env vars, `load_credentials` with precedence G)
+      → `a9e8deb`
+- [x] **Task 3** — CLI argument parser (`--targets`, `--label-id`, `--label-key`/`--label-value`, `--parallel`, `--help`, `--version`, etc.)
+      → `eda0388`
 
 ### Phase 2 — Core logic
-- [ ] **Task 4** — Label resolution + same-key strip (decisions A + B2): `resolve_target_label`, append-mode PUT body refactor
-      (⚠ see Appendix A.2 — `GET /labels?key=K&value=V` partial-matches on value; apply exact-value jq filter and add a `Severely` distractor to `labels_by_key.json`)
+- [x] **Task 4** — Label resolution + same-key strip (decisions A + B2): `resolve_target_label`, append-mode PUT body refactor
+      → `25893fb`, `12a5e00` (URL-encode + PUT-body guard fix)
+      — Forward-merged Task 5's NON_INTERACTIVE gate around the confirm/mode prompts (flow only; text stays Chinese)
+      — tests 1/2 of test_label_resolve.bats stay RED until Task 9 lands JSON emission
 - [ ] **Task 5** — Non-interactive gates on confirmation + mode prompts
+      (ℹ control flow already wrapped in Task 4; remaining work: replace Chinese strings per plan + add `refute_output --partial "Continue?"` test)
 - [ ] **Task 6** — Search strategy dispatch (C2 + C3): `classify_term`, server-side per-term OR one full scan
 - [ ] **Task 7** — `--dry-run` gates the PUT
 - [ ] **Task 8** — `--correlation-id` / `--reason` header echo

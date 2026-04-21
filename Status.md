@@ -8,7 +8,12 @@
 
 ## Where we are
 
-**Planning complete. Implementation not started.**
+**Implementation in progress.** Paused 2026-04-22 at 4/18 complete, awaiting resume.
+
+- Branch `v1.3.0-fortisiem` has 8 commits (1 planning baseline + 7 implementation)
+- Full test suite: 19/21 pass; 2 known-red (label_resolve #1/#2) unblock at Task 9
+- Next: Task 5 (small — flow already prepped, needs text + test)
+- Execution mode: subagent-driven, B-mode compression (small tasks spec-review-only)
 
 The 18-task implementation plan is finalized and locked at:
 
