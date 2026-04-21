@@ -316,9 +316,9 @@ put_one_workload() {
 }
 
 # --- 依賴檢查 ---
-command -v curl >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'curl' 未安裝。請先安裝。"; exit 1; }
-command -v jq >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'jq' 未安裝。請先安裝。"; exit 1; }
-command -v ipcalc >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'ipcalc' 未安裝。請先安裝。"; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo >&2 "ERROR: required package 'curl' not installed. Please install it first."; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo >&2 "ERROR: required package 'jq' not installed. Please install it first."; exit 1; }
+command -v ipcalc >/dev/null 2>&1 || { echo >&2 "ERROR: required package 'ipcalc' not installed. Please install it first."; exit 1; }
 
 
 # --- CLI argument parsing ---
