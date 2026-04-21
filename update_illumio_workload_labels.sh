@@ -120,6 +120,10 @@ TARGET_LABEL_KEY=""
 TARGET_LABEL_VALUE=""
 SAME_KEY_HREFS_JSON="[]"
 
+_urlenc() {
+    jq -sRr @uri <<<"$1"
+}
+
 resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
@@ -135,10 +139,11 @@ resolve_target_label() {
         TARGET_LABEL_KEY=$(echo   "$resp" | jq -r '.key')
         TARGET_LABEL_VALUE=$(echo "$resp" | jq -r '.value')
     else
-        local resp
+        local resp enc_key
+        enc_key=$(_urlenc "$LABEL_KEY")
         resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
-                   "${base}/labels?key=${LABEL_KEY}")
+                   "${base}/labels?key=${enc_key}")
         TARGET_LABEL_HREF=$(echo "$resp" | jq -r --arg v "$LABEL_VALUE" \
             '[.[] | select(.value==$v)][0].href // empty')
         if [[ -z "$TARGET_LABEL_HREF" ]]; then
@@ -150,10 +155,11 @@ resolve_target_label() {
     fi
 
     # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
-    local same_resp
+    local same_resp enc_target_key
+    enc_target_key=$(_urlenc "$TARGET_LABEL_KEY")
     same_resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                     -H 'Accept: application/json' \
-                    "${base}/labels?key=${TARGET_LABEL_KEY}")
+                    "${base}/labels?key=${enc_target_key}")
     SAME_KEY_HREFS_JSON=$(echo "$same_resp" | jq -c '[.[].href]')
 }
 
@@ -558,6 +564,12 @@ for key in "${!workloads_to_update[@]}"; do
             )}')
     fi
 
+    # 驗證請求體是否成功生成
+    if [[ -z "$put_body" ]]; then
+         echo "ERROR: failed to build PUT body for ${workload_href}" >&2
+         continue
+    fi
+
     # Idempotency short-circuit (append only): identical label set → flag for Task 9
     SKIPPED_THIS_ROUND=0
     if [[ "$UPDATE_MODE" == "append" ]]; then
@@ -566,12 +578,6 @@ for key in "${!workloads_to_update[@]}"; do
         if [[ "$before" == "$after" ]]; then
             SKIPPED_THIS_ROUND=1
         fi
-    fi
-
-    # 驗證請求體是否成功生成
-    if [ $? -ne 0 ] || [[ -z "$put_body" ]]; then
-         echo "錯誤：為 ${workload_href} 構造 PUT Body 失敗。" >&2
-         continue
     fi
 
     # 發送 PUT 請求

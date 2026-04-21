@@ -58,3 +58,17 @@ _run_json() {
     [[ "$(echo "$put_body" | jq '.labels | length')" == "1" ]]
     [[ "$(echo "$put_body" | jq -r '.labels[0].href')" == "/orgs/1/labels/878" ]]
 }
+
+@test "--label-key with space URL-encodes the query" {
+    # Mock curl doesn't have a fixture for "key=Quar%20antine", so this just
+    # verifies the encoded form reaches the log; resolve_target_label will
+    # exit 5 since no label matches, which is fine for this check.
+    run bash "$SCRIPT" --targets "server1.lab.local" \
+        --label-key "Q K" --label-value "V V" \
+        --non-interactive --dry-run --json
+    # Expect resolver to exit 5 (no match against the non-existent "Q K" key)
+    assert_failure 5
+    # Verify the URL in the mock curl log has the %-encoded key
+    run grep -F "labels?key=Q%20K" "$MOCK_CURL_LOG"
+    assert_success
+}
