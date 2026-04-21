@@ -7,7 +7,7 @@
 #           添加/設置指定的 Label。
 # 作者:     Harry
 # 日期:     20250419
-# 版本:     1.2.1 
+# 版本:     1.3.0
 #
 # 依賴套件:
 #   - curl:   用於發送 HTTP API 請求。
@@ -18,24 +18,22 @@
 #   ./update_illumio_workload_labels.sh
 #   腳本將提示輸入搜索條件、Label ID 及更新模式。
 #
-# !!! 安全警告 !!!
-# 此腳本包含硬編碼的 API 憑證 (API_USER, API_PASS)。
-# 這是一個重大的安全風險。任何擁有此文件讀取權限的人都可以獲取這些憑證。
-# 請考慮使用更安全的方法，例如環境變量、憑證管理工具 (如 Vault)，
-# 或每次安全地提示輸入密碼，而不是硬編碼。
-# 請確保文件權限設置嚴格 (例如：chmod 700)。
+# !!! SECURITY NOTES !!!
+# PCE API credentials loaded by load_credentials() in this order:
+#   CLI flags > env vars > --credentials-file > script defaults.
+# Never commit credentials to source control. See config/quarantine.conf.example.
 # ==============================================================================
 
 # --- 配置 ---
-PCE_URL_BASE="https://pce.lab.local:8443" # Illumio PCE API 的基礎 URL
-ORG_ID="1"                               # 您的 Illumio Organization ID
 API_VERSION="v2"                         # 要使用的 Illumio API 版本
 CURL_OPTS="-s -k"                        # curl 選項 (-s 靜默, -k 忽略 SSL 校驗)
 
-# --- 硬編碼憑證 (高安全風險!) ---
-API_USER="你的API用戶名"               # API Key 用戶名
-API_PASS='你的API密碼'                 # API Key 密鑰
-# ------------------------------------
+# Credentials are loaded by load_credentials() after argument parsing.
+# Precedence: CLI flags > env vars > --credentials-file > script defaults.
+API_USER=""
+API_PASS=""
+PCE_URL_BASE=""
+ORG_ID=""
 
 # --- 輔助函數 ---
 
@@ -77,6 +75,43 @@ is_in_range() {
         return 1
     fi
     [[ "$ip_int" -ge "$check_start_int" && "$ip_int" -le "$check_end_int" ]]
+}
+
+load_credentials() {
+    # Step 1: --credentials-file (lowest of the three non-default sources)
+    if [[ -n "${CREDENTIALS_FILE:-}" ]]; then
+        if [[ ! -r "$CREDENTIALS_FILE" ]]; then
+            echo "ERROR: credentials file not readable: $CREDENTIALS_FILE" >&2
+            exit 5
+        fi
+        # shellcheck disable=SC1090
+        source "$CREDENTIALS_FILE"
+    fi
+
+    # Step 2: env (overrides credentials-file when set)
+    [[ -n "${ILLUMIO_QUARANTINE_API_USER:-}" ]] && API_USER="$ILLUMIO_QUARANTINE_API_USER"
+    [[ -n "${ILLUMIO_QUARANTINE_API_PASS:-}" ]] && API_PASS="$ILLUMIO_QUARANTINE_API_PASS"
+    [[ -n "${ILLUMIO_QUARANTINE_PCE_URL:-}" ]] && PCE_URL_BASE="$ILLUMIO_QUARANTINE_PCE_URL"
+    [[ -n "${ILLUMIO_QUARANTINE_ORG_ID:-}"  ]] && ORG_ID="$ILLUMIO_QUARANTINE_ORG_ID"
+
+    # Step 3: CLI flag overrides (these are set in the arg parser; only if non-empty)
+    [[ -n "${CLI_PCE_URL:-}" ]] && PCE_URL_BASE="$CLI_PCE_URL"
+    [[ -n "${CLI_ORG_ID:-}"  ]] && ORG_ID="$CLI_ORG_ID"
+
+    # Step 4: defaults
+    [[ -z "$PCE_URL_BASE" ]] && PCE_URL_BASE="https://pce.lab.local:8443"
+    [[ -z "$ORG_ID"       ]] && ORG_ID="1"
+
+    # Step 5: missing creds
+    if [[ -z "$API_USER" || -z "$API_PASS" ]]; then
+        if [[ "${NON_INTERACTIVE:-0}" == "1" ]]; then
+            echo "ERROR: API credentials missing (use --credentials-file, env vars, or drop --non-interactive)" >&2
+            exit 6
+        fi
+        [[ -z "$API_USER" ]] && { read -e -p "Illumio API user: " API_USER; }
+        [[ -z "$API_PASS" ]] && { read -s -p "Illumio API password: " API_PASS; echo; }
+    fi
+    [[ -z "$API_USER" || -z "$API_PASS" ]] && exit 6
 }
 
 # --- 依賴檢查 ---
