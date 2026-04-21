@@ -292,6 +292,12 @@ if [[ "$NON_INTERACTIVE" == "1" ]]; then
     fi
 fi
 
+# --json is structured output; refuse the footgun of mixing with interactive mode
+if [[ "$JSON_OUT" == "1" && "$NON_INTERACTIVE" != "1" ]]; then
+    echo "ERROR: --json requires --non-interactive" >&2
+    exit 5
+fi
+
 load_credentials
 
 

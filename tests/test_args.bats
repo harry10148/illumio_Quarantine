@@ -70,3 +70,9 @@ teardown() { common_teardown; }
     assert_output --partial "correlation_id=INC-42"
     assert_output --partial "reason=test rule"
 }
+
+@test "--json without --non-interactive exits 5" {
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 --json
+    assert_failure 5
+    assert_output --partial "--json requires --non-interactive"
+}
