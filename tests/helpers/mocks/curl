@@ -24,6 +24,11 @@ done
 
 printf '%s\t%s\t%s\n' "$method" "$url" "$data" >> "$MOCK_CURL_LOG"
 
+# Auth-fail short-circuit: return unauthorized object on ANY GET
+if [[ "$method" == "GET" && "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
+    echo -n '{"error":"unauthorized"}'; exit 0
+fi
+
 case "$method:$url" in
     GET:*"/labels?key="*)
         cat "$MOCK_CURL_FIXTURE_DIR/labels_by_key.json"; exit 0 ;;

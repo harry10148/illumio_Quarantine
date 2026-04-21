@@ -8,11 +8,10 @@
 
 ## Where we are
 
-**Implementation in progress.** Paused 2026-04-22 at 4/18 complete, awaiting resume.
+**Implementation in progress.** 10/18 complete on branch `v1.3.0-fortisiem`.
 
-- Branch `v1.3.0-fortisiem` has 8 commits (1 planning baseline + 7 implementation)
-- Full test suite: 19/21 pass; 2 known-red (label_resolve #1/#2) unblock at Task 9
-- Next: Task 5 (small — flow already prepped, needs text + test)
+- Full test suite: 41/41 pass
+- Next: Task 11 (`--parallel N` PUT pool, D2)
 - Execution mode: subagent-driven, B-mode compression (small tasks spec-review-only)
 
 The 18-task implementation plan is finalized and locked at:

@@ -143,6 +143,9 @@ resolve_target_label() {
         resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
+        if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
+            echo "ERROR: PCE authentication failed" >&2; exit 4
+        fi
         if ! echo "$resp" | jq -e 'has("href")' >/dev/null 2>&1; then
             echo "ERROR: label id ${LABEL_ID} not found" >&2
             exit 5
@@ -156,6 +159,9 @@ resolve_target_label() {
         resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
+        if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
+            echo "ERROR: PCE authentication failed" >&2; exit 4
+        fi
         TARGET_LABEL_HREF=$(echo "$resp" | jq -r --arg v "$LABEL_VALUE" \
             '[.[] | select(.value==$v)][0].href // empty')
         if [[ -z "$TARGET_LABEL_HREF" ]]; then

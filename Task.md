@@ -36,7 +36,9 @@ Mark each task with its state as work proceeds:
 - [ ] **Task 7** — `--dry-run` gates the PUT
 - [ ] **Task 8** — `--correlation-id` / `--reason` header echo
 - [ ] **Task 9** — `--json` output with stable schema + accumulators
-- [ ] **Task 10** — Exit code regime consolidation (0/2/3/4/5/6)
+- [x] **Task 10** — Exit code regime consolidation (0/2/3/4/5/6)
+      → `tests/test_exit_codes.bats` (5 new tests); mock curl AUTH_FAIL covers all GETs;
+        `resolve_target_label` now detects auth-fail response and exits 4 (was 5)
 
 ### Phase 3 — Scale + audit + security
 - [ ] **Task 11** — `--parallel N` PUT pool (D2): `put_one_workload`, `wait -n` semaphore, result aggregation
