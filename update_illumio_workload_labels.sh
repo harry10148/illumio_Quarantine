@@ -176,11 +176,9 @@ resolve_target_label() {
 }
 
 # --- 依賴檢查 ---
-echo "正在檢查必要套件..."
 command -v curl >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'curl' 未安裝。請先安裝。"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'jq' 未安裝。請先安裝。"; exit 1; }
 command -v ipcalc >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'ipcalc' 未安裝。請先安裝。"; exit 1; }
-echo "所有必要套件已找到。"
 
 
 # --- CLI argument parsing ---
@@ -330,12 +328,29 @@ if [[ "$JSON_OUT" != "1" ]]; then
     [[ -n "$REASON"         ]] && echo "reason=$REASON"
 fi
 
+# Run-state accumulators for JSON emission
+AUDIT_ID="qr-$(date -u +%Y-%m-%dT%H-%M-%SZ)-$(printf '%04x%02x' $((RANDOM)) $((RANDOM%256)))"
+RUN_START_MS=$(date +%s%3N)
+declare -a J_REQUESTED=()
+declare -a J_MATCHED=()
+declare -a J_UPDATED=()
+declare -a J_SKIPPED=()
+declare -a J_FAILED=()
+
+hlog() { [[ "$JSON_OUT" != "1" ]] && echo "$@"; }
+
 
 # --- 輸入解析 ---
 IFS=',' read -ra SEARCH_TERMS <<< "$SEARCH_TERMS_RAW"
 for i in "${!SEARCH_TERMS[@]}"; do
     # 清理每個搜索條件前後的空格
     SEARCH_TERMS[$i]=$(echo "${SEARCH_TERMS[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+done
+
+# Seed J_REQUESTED from SEARCH_TERMS
+for t in "${SEARCH_TERMS[@]}"; do
+    [[ -z "$t" ]] && continue
+    J_REQUESTED+=("$(jq -nc --arg t "$t" '$t')")
 done
 
 
@@ -395,8 +410,8 @@ fi
 
 
 # --- 步驟 2: 過濾 Workloads ---
-echo
-echo "正在分析匹配的 Workloads (僅限 managed: true)..."
+hlog
+hlog "Analyzing matching workloads (managed: true only)..."
 declare -A workloads_to_update # 存儲待更新 Workloads (鍵: href, 值: json{hostname, labels})
 found_count=0                  # 唯一匹配的 Workload 計數
 
@@ -522,7 +537,9 @@ while IFS= read -r workload_json; do
         value_json=$(jq -nc --arg hn "$hostname" --argjson lbls "$labels_json" '{hostname: $hn, labels: $lbls}')
         # 僅在首次匹配時打印消息和計數
         if [[ -z "${workloads_to_update[$key]}" ]]; then
-            echo "  -> 找到匹配: ${hostname} (${workload_href})"
+            hlog "  -> match: ${hostname} (${workload_href})"
+            J_MATCHED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname" \
+                                  '{href:$h,hostname:$n}')")
             ((found_count++))
         fi
         workloads_to_update["$key"]="$value_json" # 存儲或更新信息
@@ -535,28 +552,26 @@ done < <(echo "$api_response" | jq -c '.[]') # --- 結束外層循環 ---
 
 # 檢查是否有匹配的 Workload
 if [ ${#workloads_to_update[@]} -eq 0 ]; then
-    echo
-    echo "分析完成：找不到匹配任何搜索條件的 managed Workload。" >&2
-    exit 0
+    hlog "No managed workload matched any target." >&2
 fi
 
 # 顯示將受影響的 Workload 列表
-echo
-echo "--------------------------------------------------"
-echo "分析完成：以下 ${#workloads_to_update[@]} 個 managed Workloads 將受影響:"
-echo "--------------------------------------------------"
+hlog
+hlog "--------------------------------------------------"
+hlog "${#workloads_to_update[@]} managed workloads will be affected:"
+hlog "--------------------------------------------------"
 for key in "${!workloads_to_update[@]}"; do
     workload_href=$(echo "$key" | tr '_' '/')
     stored_data_json="${workloads_to_update[$key]}"
     display_hostname=$(echo "$stored_data_json" | jq -r '.hostname // "N/A"')
-    echo "  - ${display_hostname} (${workload_href})"
+    hlog "  - ${display_hostname} (${workload_href})"
 done
-echo "--------------------------------------------------"
+hlog "--------------------------------------------------"
 
-if [[ "$NON_INTERACTIVE" != "1" ]]; then
+if [[ "$NON_INTERACTIVE" != "1" && ${#workloads_to_update[@]} -gt 0 ]]; then
     read -e -p "Continue? (type 'yes' to confirm): " CONFIRMATION
     if [[ "${CONFIRMATION,,}" != "yes" ]]; then
-        echo "Cancelled."
+        hlog "Cancelled."
         exit 0
     fi
 fi
@@ -574,13 +589,13 @@ if [[ "$NON_INTERACTIVE" != "1" && -z "$UPDATE_MODE" ]]; then
 fi
 [[ -z "$UPDATE_MODE" ]] && UPDATE_MODE="append"
 
-echo "--------------------------------------------------"
+hlog "--------------------------------------------------"
 
 
 # --- 步驟 4: 執行更新 ---
 # 遍歷確認要更新的 Workload 並發送 API 請求
 
-echo "開始更新 Labels..."
+hlog "Updating labels..."
 for key in "${!workloads_to_update[@]}"; do
     # 恢復 href 並提取存儲的信息
     workload_href=$(echo "$key" | tr '_' '/')
@@ -622,11 +637,10 @@ for key in "${!workloads_to_update[@]}"; do
 
     # 發送 PUT 請求
     update_url="${PCE_URL_BASE}/api/${API_VERSION}${workload_href}"
-    echo "正在更新 Workload '${hostname_display}' (${workload_href}) 使用 [${UPDATE_MODE}] 模式..."
+    hlog "Updating workload '${hostname_display}' (${workload_href}) [${UPDATE_MODE}]..."
 
     if [[ "$DRY_RUN" == "1" ]]; then
         http_code="000"; curl_exit_code=0
-        [[ "$JSON_OUT" != "1" ]] && echo "DRY-RUN: would PUT ${update_url}"
     else
         http_code=$(curl ${CURL_OPTS} -X PUT \
             -u "${API_USER}:${API_PASS}" \
@@ -639,15 +653,80 @@ for key in "${!workloads_to_update[@]}"; do
         curl_exit_code=$?
     fi
 
-    # 處理請求結果 (000 = dry-run success sentinel)
-    if [ $curl_exit_code -ne 0 ]; then
-        echo "錯誤：更新 Workload '${hostname_display}' (${workload_href}) 失敗 (curl 命令錯誤碼: ${curl_exit_code})。" >&2
-    elif [[ "$http_code" == "000" || ( $http_code -ge 200 && $http_code -lt 300 ) ]]; then
-        echo "  -> 成功更新 Labels (HTTP: ${http_code})"
+    # Classify outcome into JSON accumulators
+    if [[ "$DRY_RUN" == "1" ]]; then
+        J_UPDATED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
+                              '{href:$h,hostname:$n,dry_run:true}')")
+        hlog "  -> DRY-RUN success"
+    elif [[ "${SKIPPED_THIS_ROUND:-0}" == "1" ]]; then
+        J_SKIPPED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
+                              '{href:$h,hostname:$n}')")
+        hlog "  -> skipped (already labeled)"
+        SKIPPED_THIS_ROUND=0
+    elif [ $curl_exit_code -ne 0 ]; then
+        J_FAILED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
+                              --arg e "curl $curl_exit_code" \
+                              '{href:$h,hostname:$n,http:0,error:$e}')")
+        echo "ERROR: PUT ${workload_href} failed (curl ${curl_exit_code})" >&2
+    elif [[ $http_code -ge 200 && $http_code -lt 300 ]]; then
+        J_UPDATED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
+                              '{href:$h,hostname:$n}')")
+        hlog "  -> updated (HTTP ${http_code})"
     else
-        echo "錯誤：更新 Workload '${hostname_display}' (${workload_href}) 失敗 (HTTP 狀態碼: ${http_code})。" >&2
+        J_FAILED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
+                              --argjson http "${http_code}" \
+                              --arg e "PCE returned ${http_code}" \
+                              '{href:$h,hostname:$n,http:$http,error:$e}')")
+        echo "ERROR: PUT ${workload_href} failed (HTTP ${http_code})" >&2
     fi
 done
 
-echo "--------------------------------------------------"
-echo "腳本執行完畢。"
+hlog "--------------------------------------------------"
+
+# --- Final JSON + exit-code ---
+RUN_END_MS=$(date +%s%3N)
+DURATION_MS=$((RUN_END_MS - RUN_START_MS))
+
+ec=0
+if   [[ ${#J_MATCHED[@]} -eq 0 ]]; then ec=3
+elif [[ ${#J_FAILED[@]}  -gt 0 ]]; then ec=2
+fi
+
+_arr() { local IFS=','; echo "[${*}]"; }
+
+if [[ "$JSON_OUT" == "1" ]]; then
+    jq -nc \
+       --arg audit_id "$AUDIT_ID" \
+       --arg correlation_id "$CORRELATION_ID" \
+       --arg mode "$UPDATE_MODE" \
+       --arg strategy "${SEARCH_STRATEGY:-full_scan}" \
+       --argjson label "$(jq -nc --arg h "$TARGET_LABEL_HREF" \
+                                  --arg k "$TARGET_LABEL_KEY" \
+                                  --arg v "$TARGET_LABEL_VALUE" \
+                                  '{href:$h,key:$k,value:$v}')" \
+       --argjson requested "$(_arr "${J_REQUESTED[@]:-}")" \
+       --argjson matched   "$(_arr "${J_MATCHED[@]:-}")" \
+       --argjson updated   "$(_arr "${J_UPDATED[@]:-}")" \
+       --argjson skipped   "$(_arr "${J_SKIPPED[@]:-}")" \
+       --argjson failed    "$(_arr "${J_FAILED[@]:-}")" \
+       --argjson parallel  "$PARALLEL" \
+       --argjson dry_run   "$([[ $DRY_RUN == 1 ]] && echo true || echo false)" \
+       --argjson duration  "$DURATION_MS" \
+       --argjson exit_code "$ec" \
+       '{audit_id:$audit_id, correlation_id:$correlation_id,
+         mode:$mode, label:$label,
+         requested_targets:$requested,
+         search_strategy:$strategy,
+         matched:$matched, updated:$updated,
+         skipped_already_labeled:$skipped,
+         failed:$failed,
+         counts:{requested:($requested|length),
+                 matched:($matched|length),
+                 updated:($updated|length),
+                 skipped:($skipped|length),
+                 failed:($failed|length)},
+         parallel:$parallel, dry_run:$dry_run,
+         duration_ms:$duration, exit_code:$exit_code}'
+fi
+# (CEF emit happens after this in Task 12)
+exit "$ec"
