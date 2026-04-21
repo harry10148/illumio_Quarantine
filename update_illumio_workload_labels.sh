@@ -617,20 +617,25 @@ for key in "${!workloads_to_update[@]}"; do
     update_url="${PCE_URL_BASE}/api/${API_VERSION}${workload_href}"
     echo "正在更新 Workload '${hostname_display}' (${workload_href}) 使用 [${UPDATE_MODE}] 模式..."
 
-    http_code=$(curl ${CURL_OPTS} -X PUT \
-        -u "${API_USER}:${API_PASS}" \
-        -H "Content-Type: application/json" \
-        -H "Accept: application/json" \
-        -d "$put_body" \
-        -o /dev/null \
-        -w "%{http_code}" \
-        "${update_url}")
-    curl_exit_code=$?
+    if [[ "$DRY_RUN" == "1" ]]; then
+        http_code="000"; curl_exit_code=0
+        [[ "$JSON_OUT" != "1" ]] && echo "DRY-RUN: would PUT ${update_url}"
+    else
+        http_code=$(curl ${CURL_OPTS} -X PUT \
+            -u "${API_USER}:${API_PASS}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d "$put_body" \
+            -o /dev/null \
+            -w "%{http_code}" \
+            "${update_url}")
+        curl_exit_code=$?
+    fi
 
-    # 處理請求結果
+    # 處理請求結果 (000 = dry-run success sentinel)
     if [ $curl_exit_code -ne 0 ]; then
         echo "錯誤：更新 Workload '${hostname_display}' (${workload_href}) 失敗 (curl 命令錯誤碼: ${curl_exit_code})。" >&2
-    elif [[ $http_code -ge 200 && $http_code -lt 300 ]]; then
+    elif [[ "$http_code" == "000" || ( $http_code -ge 200 && $http_code -lt 300 ) ]]; then
         echo "  -> 成功更新 Labels (HTTP: ${http_code})"
     else
         echo "錯誤：更新 Workload '${hostname_display}' (${workload_href}) 失敗 (HTTP 狀態碼: ${http_code})。" >&2
