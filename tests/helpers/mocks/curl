@@ -43,6 +43,11 @@ case "$method:$url" in
             echo "[]"
         fi
         exit 0 ;;
+    GET:*"/workloads?max_results="*|GET:*"/workloads?"*"max_results="*)
+        if [[ "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
+            echo -n '{"error":"unauthorized"}'; exit 0
+        fi
+        cat "$MOCK_CURL_FIXTURE_DIR/workloads_list.json"; exit 0 ;;
     GET:*"/workloads")
         if [[ "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
             echo -n '{"error":"unauthorized"}'; exit 0

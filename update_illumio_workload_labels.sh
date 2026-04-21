@@ -77,6 +77,18 @@ is_in_range() {
     [[ "$ip_int" -ge "$check_start_int" && "$ip_int" -le "$check_end_int" ]]
 }
 
+classify_term() {
+    local t="$1"
+    if [[ "$t" == */* ]]; then echo "cidr"; return; fi
+    [[ "$t" == *-* && ! "$t" =~ ^[a-zA-Z] ]] && { echo "range"; return; }
+    [[ "$t" == *~* ]] && { echo "range"; return; }
+    if [[ "$t" == *. && ! "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "prefix"; return
+    fi
+    if [[ "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "ip"; return; fi
+    echo "hostname"
+}
+
 load_credentials() {
     # Step 1: --credentials-file (lowest of the three non-default sources)
     if [[ -n "${CREDENTIALS_FILE:-}" ]]; then
@@ -320,30 +332,55 @@ for i in "${!SEARCH_TERMS[@]}"; do
 done
 
 
-# --- 準備 API URL 和數據 ---
-WORKLOADS_URL="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}/workloads"
+# --- Step 1: Fetch workloads (server-side per-term if all precise, else one full scan) ---
+WORKLOADS_BASE="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}/workloads"
+SEARCH_STRATEGY=""
 
+needs_full=0
+for term in "${SEARCH_TERMS[@]}"; do
+    [[ -z "$term" ]] && continue
+    t=$(classify_term "$term")
+    if [[ "$t" == "cidr" || "$t" == "range" || "$t" == "prefix" ]]; then
+        needs_full=1; break
+    fi
+done
 
-# --- 步驟 1: 獲取所有 Workloads ---
-echo
-echo "正在從 ${WORKLOADS_URL} 獲取 Workloads..."
-api_response=$(curl ${CURL_OPTS} \
-    -u "${API_USER}:${API_PASS}" \
-    -H "Accept: application/json" \
-    "${WORKLOADS_URL}")
-
-# API 響應驗證
-if [ $? -ne 0 ] || ! echo "$api_response" | jq empty > /dev/null 2>&1; then
-    echo "錯誤：無法從 ${WORKLOADS_URL} 獲取 Workloads 或響應不是有效的 JSON。" >&2
-    exit 1
+if [[ "$needs_full" == "1" ]]; then
+    SEARCH_STRATEGY="full_scan"
+    api_response=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+        -H 'Accept: application/json' \
+        "${WORKLOADS_BASE}?max_results=100000")
+else
+    SEARCH_STRATEGY="server_side"
+    api_response="[]"
+    for term in "${SEARCH_TERMS[@]}"; do
+        [[ -z "$term" ]] && continue
+        t=$(classify_term "$term")
+        if [[ "$t" == "ip" ]]; then
+            part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+                -H 'Accept: application/json' \
+                "${WORKLOADS_BASE}?ip_address=${term}")
+        else
+            part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+                -H 'Accept: application/json' \
+                "${WORKLOADS_BASE}?hostname=${term}")
+        fi
+        # Merge (dedup by href)
+        api_response=$(jq -n --argjson a "$api_response" --argjson b "$part" \
+            '$a + $b | unique_by(.href)')
+    done
 fi
-if ! echo "$api_response" | jq -e 'type == "array"' > /dev/null; then
-    echo "錯誤：API 返回的不是預期的 JSON 數組。" >&2
-    exit 1
-fi
 
-workload_count=$(echo "$api_response" | jq 'length')
-echo "成功獲取 ${workload_count} 個 Workloads。"
+# Auth / JSON validation
+if ! echo "$api_response" | jq empty >/dev/null 2>&1; then
+    echo "ERROR: PCE response is not valid JSON" >&2; exit 4
+fi
+if echo "$api_response" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
+    echo "ERROR: PCE authentication failed" >&2; exit 4
+fi
+if ! echo "$api_response" | jq -e 'type=="array"' >/dev/null; then
+    echo "ERROR: PCE response is not a JSON array" >&2; exit 4
+fi
 
 
 # --- 步驟 2: 過濾 Workloads ---
