@@ -136,6 +136,51 @@ _urlenc() {
     printf '%s' "$1" | jq -sRr @uri
 }
 
+# @description Escape a value per ArcSight CEF (backslash, pipe, equals, CR, LF).
+cef_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//|/\\|}"
+    s="${s//=/\\=}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    printf '%s' "$s"
+}
+
+# @description Append one CEF:0 audit line to $AUDIT_FILE using flock for
+#              concurrent-writer safety. No-op when $AUDIT_FILE is unset/empty.
+# @param $1 outcome: success | partial | no_match | failure
+emit_cef() {
+    [[ -z "${AUDIT_FILE:-}" ]] && return 0
+    local outcome="$1"
+    [[ -z "${AUDIT_ID:-}" ]] && AUDIT_ID="qr-$(date -u +%Y-%m-%dT%H-%M-%SZ)-early"
+    local epoch_ms; epoch_ms=$(date +%s%3N)
+    local pce_host; pce_host="${PCE_URL_BASE#https://}"; pce_host="${pce_host%%/*}"; pce_host="${pce_host%%:*}"
+    local esc_reason;  esc_reason=$(cef_escape "${REASON:-}")
+    local esc_targets; esc_targets=$(cef_escape "${SEARCH_TERMS_RAW:-}")
+    local esc_cid;     esc_cid=$(cef_escape "${CORRELATION_ID:-}")
+    local esc_key;     esc_key=$(cef_escape "${TARGET_LABEL_KEY:-}")
+    local esc_val;     esc_val=$(cef_escape "${TARGET_LABEL_VALUE:-}")
+    local dry;         dry=$([[ "${DRY_RUN:-0}" == 1 ]] && echo true || echo false)
+    local updated_ct="${#J_UPDATED[@]}"
+    local failed_ct="${#J_FAILED[@]}"
+
+    local line
+    line=$(printf 'CEF:0|Illumio|Quarantine|%s|quarantine.action|Illumio Quarantine Action|5|rt=%s dvchost=%s act=%s outcome=%s cs1Label=correlation_id cs1=%s cs2Label=audit_id cs2=%s cs3Label=reason cs3=%s cs4Label=targets cs4=%s cs5Label=label_key cs5=%s cs6Label=label_value cs6=%s cn1Label=updated_count cn1=%d cn2Label=failed_count cn2=%d cs7Label=dry_run cs7=%s' \
+        "$VERSION" "$epoch_ms" "$pce_host" "${UPDATE_MODE:-}" "$outcome" \
+        "$esc_cid" "$AUDIT_ID" "$esc_reason" "$esc_targets" \
+        "$esc_key" "$esc_val" \
+        "$updated_ct" "$failed_ct" "$dry")
+
+    mkdir -p "$(dirname "$AUDIT_FILE")" 2>/dev/null || true
+    local lock="${AUDIT_FILE}.lock"
+    touch "$lock"
+    (
+        flock -x 9
+        printf '%s\n' "$line" >> "$AUDIT_FILE"
+    ) 9>"$lock"
+}
+
 resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
@@ -144,7 +189,7 @@ resolve_target_label() {
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
         if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
-            echo "ERROR: PCE authentication failed" >&2; exit 4
+            echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
         fi
         if ! echo "$resp" | jq -e 'has("href")' >/dev/null 2>&1; then
             echo "ERROR: label id ${LABEL_ID} not found" >&2
@@ -160,7 +205,7 @@ resolve_target_label() {
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
         if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
-            echo "ERROR: PCE authentication failed" >&2; exit 4
+            echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
         fi
         TARGET_LABEL_HREF=$(echo "$resp" | jq -r --arg v "$LABEL_VALUE" \
             '[.[] | select(.value==$v)][0].href // empty')
@@ -493,13 +538,13 @@ fi
 
 # Auth / JSON validation
 if ! echo "$api_response" | jq empty >/dev/null 2>&1; then
-    echo "ERROR: PCE response is not valid JSON" >&2; exit 4
+    echo "ERROR: PCE response is not valid JSON" >&2; emit_cef "failure"; exit 4
 fi
 if echo "$api_response" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
-    echo "ERROR: PCE authentication failed" >&2; exit 4
+    echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
 fi
 if ! echo "$api_response" | jq -e 'type=="array"' >/dev/null; then
-    echo "ERROR: PCE response is not a JSON array" >&2; exit 4
+    echo "ERROR: PCE response is not a JSON array" >&2; emit_cef "failure"; exit 4
 fi
 
 
@@ -782,5 +827,11 @@ if [[ "$JSON_OUT" == "1" ]]; then
          parallel:$parallel, dry_run:$dry_run,
          duration_ms:$duration, exit_code:$exit_code}'
 fi
-# (CEF emit happens after this in Task 12)
+case "$ec" in
+    0) outcome="success" ;;
+    2) outcome="partial" ;;
+    3) outcome="no_match" ;;
+    *) outcome="failure" ;;
+esac
+emit_cef "$outcome"
 exit "$ec"
