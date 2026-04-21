@@ -54,3 +54,10 @@ teardown() { common_teardown; }
     run bash "$SCRIPT" --targets x --label-id 1 --parallel 21 --non-interactive --dry-run --json
     assert_failure 5
 }
+
+@test "non-interactive does not prompt for confirmation or mode" {
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --mode append --non-interactive --dry-run --json
+    assert_success
+    refute_output --partial "Continue?"
+}

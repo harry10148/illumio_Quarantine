@@ -506,34 +506,26 @@ done
 echo "--------------------------------------------------"
 
 if [[ "$NON_INTERACTIVE" != "1" ]]; then
-    # 請求執行確認
-    read -e -p "是否要繼續？ (請輸入 'yes' 確認，其他任意鍵取消): " CONFIRMATION
+    read -e -p "Continue? (type 'yes' to confirm): " CONFIRMATION
     if [[ "${CONFIRMATION,,}" != "yes" ]]; then
-        echo "操作已取消。"
+        echo "Cancelled."
         exit 0
-    fi
-
-    # 請求更新模式確認
-    echo
-    echo "請選擇 Label 更新模式："
-    echo "  1) 增加 (保留現有標籤，並添加新的 Label: ${TARGET_LABEL_HREF})"
-    echo "  2) 覆蓋 (移除所有現有標籤，僅設置新的 Label: ${TARGET_LABEL_HREF})"
-    read -e -p "請輸入模式 (1 或 2): " UPDATE_MODE_CHOICE
-
-    UPDATE_MODE=""
-    if [[ "$UPDATE_MODE_CHOICE" == "1" ]]; then
-        UPDATE_MODE="append"
-        echo "已選擇 [增加] 模式。"
-    elif [[ "$UPDATE_MODE_CHOICE" == "2" ]]; then
-        UPDATE_MODE="overwrite"
-        echo "已選擇 [覆蓋] 模式。"
-    else
-        echo "無效的選擇。操作已取消。" >&2
-        exit 1
     fi
 fi
 
-echo "確認執行更新..."
+if [[ "$NON_INTERACTIVE" != "1" && -z "$UPDATE_MODE" ]]; then
+    echo "Label update mode:"
+    echo "  1) append    (keep existing business labels; replace same-key)"
+    echo "  2) overwrite (remove all existing labels; set only new)"
+    read -e -p "Mode (1 or 2): " UPDATE_MODE_CHOICE
+    case "$UPDATE_MODE_CHOICE" in
+        1) UPDATE_MODE="append" ;;
+        2) UPDATE_MODE="overwrite" ;;
+        *) echo "ERROR: invalid mode choice" >&2; exit 5 ;;
+    esac
+fi
+[[ -z "$UPDATE_MODE" ]] && UPDATE_MODE="append"
+
 echo "--------------------------------------------------"
 
 
