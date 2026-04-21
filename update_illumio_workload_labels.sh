@@ -133,7 +133,7 @@ TARGET_LABEL_VALUE=""
 SAME_KEY_HREFS_JSON="[]"
 
 _urlenc() {
-    jq -sRr @uri <<<"$1"
+    printf '%s' "$1" | jq -sRr @uri
 }
 
 resolve_target_label() {
@@ -356,14 +356,18 @@ else
     for term in "${SEARCH_TERMS[@]}"; do
         [[ -z "$term" ]] && continue
         t=$(classify_term "$term")
+        enc_term=$(_urlenc "$term")
         if [[ "$t" == "ip" ]]; then
             part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                 -H 'Accept: application/json' \
-                "${WORKLOADS_BASE}?ip_address=${term}")
+                "${WORKLOADS_BASE}?ip_address=${enc_term}")
         else
             part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                 -H 'Accept: application/json' \
-                "${WORKLOADS_BASE}?hostname=${term}")
+                "${WORKLOADS_BASE}?hostname=${enc_term}")
+        fi
+        if ! echo "$part" | jq -e 'type=="array"' >/dev/null 2>&1; then
+            echo "ERROR: PCE returned non-array for term '${term}'" >&2; exit 4
         fi
         # Merge (dedup by href)
         api_response=$(jq -n --argjson a "$api_response" --argjson b "$part" \
