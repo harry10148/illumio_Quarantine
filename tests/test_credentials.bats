@@ -47,3 +47,16 @@ EOF
         --non-interactive --dry-run --json
     assert_failure 6
 }
+
+@test "warns on world-readable credentials file" {
+    cat > "$BATS_TMPDIR_LOCAL/c.conf" <<EOF
+API_USER="u"; API_PASS="p"
+EOF
+    chmod 644 "$BATS_TMPDIR_LOCAL/c.conf"
+    unset ILLUMIO_QUARANTINE_API_USER ILLUMIO_QUARANTINE_API_PASS
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --non-interactive --dry-run --json \
+        --credentials-file "$BATS_TMPDIR_LOCAL/c.conf"
+    assert_success
+    [[ "$output" == *"insecure permissions"* ]] || [[ "$stderr" == *"insecure permissions"* ]]
+}

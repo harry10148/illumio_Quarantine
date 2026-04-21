@@ -98,6 +98,13 @@ load_credentials() {
         fi
         # shellcheck disable=SC1090
         source "$CREDENTIALS_FILE"
+        if [[ "$(uname)" == "Linux" ]]; then
+            local mode
+            mode=$(stat -c '%a' "$CREDENTIALS_FILE" 2>/dev/null || echo "000")
+            if [[ -n "$mode" && "$mode" != "600" && "$mode" != "400" ]]; then
+                echo "WARNING: credentials file $CREDENTIALS_FILE has insecure permissions $mode; recommend chmod 600" >&2
+            fi
+        fi
     fi
 
     # Step 2: env (overrides credentials-file when set)
