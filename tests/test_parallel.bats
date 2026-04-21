@@ -22,10 +22,10 @@ teardown() { common_teardown; }
 
 @test "parallel with an injected failure marks partial" {
     export MOCK_CURL_PUT_HTTP="500"
-    out=$(bash "$SCRIPT" --targets "10.0.0.0/24" --label-id 878 \
-        --mode append --non-interactive --json --parallel 2 2>/dev/null) || rc=$?
-    [[ "${rc:-0}" -eq 2 ]]
-    [[ "$(echo "$out" | jq '.counts.failed')" == "2" ]]
+    run --separate-stderr bash "$SCRIPT" --targets "10.0.0.0/24" --label-id 878 \
+        --mode append --non-interactive --json --parallel 2
+    [[ "$status" -eq 2 ]]
+    [[ "$(echo "$output" | jq '.counts.failed')" == "2" ]]
 }
 
 @test "parallel actually overlaps (faster than serial)" {
