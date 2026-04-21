@@ -114,6 +114,49 @@ load_credentials() {
     [[ -z "$API_USER" || -z "$API_PASS" ]] && exit 6
 }
 
+# Target label state — resolved by resolve_target_label()
+TARGET_LABEL_HREF=""
+TARGET_LABEL_KEY=""
+TARGET_LABEL_VALUE=""
+SAME_KEY_HREFS_JSON="[]"
+
+resolve_target_label() {
+    local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
+    if [[ -n "$LABEL_ID" ]]; then
+        local resp
+        resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+                   -H 'Accept: application/json' \
+                   "${base}/labels/${LABEL_ID}")
+        if ! echo "$resp" | jq -e 'has("href")' >/dev/null 2>&1; then
+            echo "ERROR: label id ${LABEL_ID} not found" >&2
+            exit 5
+        fi
+        TARGET_LABEL_HREF="/orgs/${ORG_ID}/labels/${LABEL_ID}"
+        TARGET_LABEL_KEY=$(echo   "$resp" | jq -r '.key')
+        TARGET_LABEL_VALUE=$(echo "$resp" | jq -r '.value')
+    else
+        local resp
+        resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+                   -H 'Accept: application/json' \
+                   "${base}/labels?key=${LABEL_KEY}")
+        TARGET_LABEL_HREF=$(echo "$resp" | jq -r --arg v "$LABEL_VALUE" \
+            '[.[] | select(.value==$v)][0].href // empty')
+        if [[ -z "$TARGET_LABEL_HREF" ]]; then
+            echo "ERROR: no label with key=${LABEL_KEY} value=${LABEL_VALUE}" >&2
+            exit 5
+        fi
+        TARGET_LABEL_KEY="$LABEL_KEY"
+        TARGET_LABEL_VALUE="$LABEL_VALUE"
+    fi
+
+    # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
+    local same_resp
+    same_resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+                    -H 'Accept: application/json' \
+                    "${base}/labels?key=${TARGET_LABEL_KEY}")
+    SAME_KEY_HREFS_JSON=$(echo "$same_resp" | jq -c '[.[].href]')
+}
+
 # --- 依賴檢查 ---
 echo "正在檢查必要套件..."
 command -v curl >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'curl' 未安裝。請先安裝。"; exit 1; }
@@ -260,6 +303,8 @@ if [[ -n "$LABEL_ID" ]] && ! [[ "$LABEL_ID" =~ ^[0-9]+$ ]]; then
     echo "ERROR: label id must be numeric" >&2; exit 5
 fi
 
+resolve_target_label
+
 
 # --- 輸入解析 ---
 IFS=',' read -ra SEARCH_TERMS <<< "$SEARCH_TERMS_RAW"
@@ -270,8 +315,6 @@ done
 
 
 # --- 準備 API URL 和數據 ---
-NEW_LABEL_HREF="/orgs/${ORG_ID}/labels/${NEW_LABEL_ID}"
-echo "目標 Label Href: ${NEW_LABEL_HREF}"
 WORKLOADS_URL="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}/workloads"
 
 
@@ -456,30 +499,32 @@ for key in "${!workloads_to_update[@]}"; do
 done
 echo "--------------------------------------------------"
 
-# 請求執行確認
-read -e -p "是否要繼續？ (請輸入 'yes' 確認，其他任意鍵取消): " CONFIRMATION
-if [[ "${CONFIRMATION,,}" != "yes" ]]; then
-    echo "操作已取消。"
-    exit 0
-fi
+if [[ "$NON_INTERACTIVE" != "1" ]]; then
+    # 請求執行確認
+    read -e -p "是否要繼續？ (請輸入 'yes' 確認，其他任意鍵取消): " CONFIRMATION
+    if [[ "${CONFIRMATION,,}" != "yes" ]]; then
+        echo "操作已取消。"
+        exit 0
+    fi
 
-# 請求更新模式確認
-echo
-echo "請選擇 Label 更新模式："
-echo "  1) 增加 (保留現有標籤，並添加新的 Label: ${NEW_LABEL_HREF})"
-echo "  2) 覆蓋 (移除所有現有標籤，僅設置新的 Label: ${NEW_LABEL_HREF})"
-read -e -p "請輸入模式 (1 或 2): " UPDATE_MODE_CHOICE
+    # 請求更新模式確認
+    echo
+    echo "請選擇 Label 更新模式："
+    echo "  1) 增加 (保留現有標籤，並添加新的 Label: ${TARGET_LABEL_HREF})"
+    echo "  2) 覆蓋 (移除所有現有標籤，僅設置新的 Label: ${TARGET_LABEL_HREF})"
+    read -e -p "請輸入模式 (1 或 2): " UPDATE_MODE_CHOICE
 
-UPDATE_MODE=""
-if [[ "$UPDATE_MODE_CHOICE" == "1" ]]; then
-    UPDATE_MODE="append"
-    echo "已選擇 [增加] 模式。"
-elif [[ "$UPDATE_MODE_CHOICE" == "2" ]]; then
-    UPDATE_MODE="overwrite"
-    echo "已選擇 [覆蓋] 模式。"
-else
-    echo "無效的選擇。操作已取消。" >&2
-    exit 1
+    UPDATE_MODE=""
+    if [[ "$UPDATE_MODE_CHOICE" == "1" ]]; then
+        UPDATE_MODE="append"
+        echo "已選擇 [增加] 模式。"
+    elif [[ "$UPDATE_MODE_CHOICE" == "2" ]]; then
+        UPDATE_MODE="overwrite"
+        echo "已選擇 [覆蓋] 模式。"
+    else
+        echo "無效的選擇。操作已取消。" >&2
+        exit 1
+    fi
 fi
 
 echo "確認執行更新..."
@@ -497,26 +542,30 @@ for key in "${!workloads_to_update[@]}"; do
     existing_labels_json=$(echo "$stored_data_json" | jq -c '.labels // []')
     hostname_display=$(echo "$stored_data_json" | jq -r '.hostname // "N/A"')
 
-    # 檢查標籤是否已存在
-    label_exists=$(echo "$existing_labels_json" | jq --arg new_href "$NEW_LABEL_HREF" 'map(select(.href == $new_href)) | length > 0')
-
-    # 僅在 "增加" 模式下，如果標籤已存在則跳過
-    if [[ "$UPDATE_MODE" == "append" && "$label_exists" == "true" ]]; then
-        echo "Workload '${hostname_display}' (${workload_href}) 在 [增加] 模式下已包含 Label '${NEW_LABEL_HREF}'，跳過更新。"
-        continue
-    fi
-
-    # 根據選擇的模式構造 PUT 請求體
+    # 根據選擇的模式構造 PUT 請求體 (B2: append strips same-key labels, then adds target)
     put_body=""
     if [[ "$UPDATE_MODE" == "overwrite" ]]; then
-        # 覆蓋模式：僅包含新標籤
-        put_body=$(jq -n --arg new_href "$NEW_LABEL_HREF" \
-                       '{labels: [{href: $new_href}]}')
+        put_body=$(jq -nc --arg h "$TARGET_LABEL_HREF" \
+                        '{labels:[{href:$h}]}')
     else
-        # 增加模式：合併現有標籤和新標籤
-        put_body=$(jq -n --argjson existing "$existing_labels_json" \
-                       --arg new_href "$NEW_LABEL_HREF" \
-                       '{labels: ($existing + [{href: $new_href}])}')
+        put_body=$(jq -nc \
+            --argjson existing "$existing_labels_json" \
+            --argjson same_key "$SAME_KEY_HREFS_JSON" \
+            --arg     h        "$TARGET_LABEL_HREF" \
+            '{labels: (
+                  ($existing | map(select(.href as $x | ($same_key | index($x)) | not)))
+                + [{href:$h}]
+            )}')
+    fi
+
+    # Idempotency short-circuit (append only): identical label set → flag for Task 9
+    SKIPPED_THIS_ROUND=0
+    if [[ "$UPDATE_MODE" == "append" ]]; then
+        before=$(echo "$existing_labels_json" | jq -c 'sort_by(.href)')
+        after=$(echo  "$put_body"            | jq -c '.labels | sort_by(.href)')
+        if [[ "$before" == "$after" ]]; then
+            SKIPPED_THIS_ROUND=1
+        fi
     fi
 
     # 驗證請求體是否成功生成
