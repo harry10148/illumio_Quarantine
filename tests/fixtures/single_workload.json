@@ -1,0 +1,9 @@
+{
+  "href": "/orgs/1/workloads/11111111-1111-1111-1111-111111111111",
+  "hostname": "server1.lab.local",
+  "managed": true,
+  "labels": [
+    {"href": "/orgs/1/labels/100", "key": "role", "value": "web"},
+    {"href": "/orgs/1/labels/700", "key": "Quarantine", "value": "Mild"}
+  ]
+}

@@ -1,0 +1,7 @@
+config/quarantine.conf
+logs/
+*.log
+*.lock
+.DS_Store
+tests/.bats_tmp/
+/tmp/iq_*
