@@ -323,6 +323,13 @@ fi
 
 resolve_target_label
 
+if [[ "$JSON_OUT" != "1" ]]; then
+    echo "illumio_Quarantine $VERSION"
+    echo "label=${TARGET_LABEL_KEY}:${TARGET_LABEL_VALUE} (${TARGET_LABEL_HREF})"
+    [[ -n "$CORRELATION_ID" ]] && echo "correlation_id=$CORRELATION_ID"
+    [[ -n "$REASON"         ]] && echo "reason=$REASON"
+fi
+
 
 # --- 輸入解析 ---
 IFS=',' read -ra SEARCH_TERMS <<< "$SEARCH_TERMS_RAW"

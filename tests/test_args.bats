@@ -61,3 +61,12 @@ teardown() { common_teardown; }
     assert_success
     refute_output --partial "Continue?"
 }
+
+@test "correlation-id and reason appear in header in human mode" {
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --non-interactive --dry-run \
+        --correlation-id "INC-42" --reason "test rule"
+    assert_success
+    assert_output --partial "correlation_id=INC-42"
+    assert_output --partial "reason=test rule"
+}
