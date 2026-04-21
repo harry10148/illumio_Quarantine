@@ -181,6 +181,88 @@ resolve_target_label() {
     SAME_KEY_HREFS_JSON=$(echo "$same_resp" | jq -c '[.[].href]')
 }
 
+# @description Build PUT body, check idempotency, issue PUT, and classify outcome.
+#              Designed to run as a background job; writes one JSON result file
+#              into $result_dir so the main loop can aggregate after `wait`.
+# @param $1 workload_href
+# @param $2 hostname_display
+# @param $3 existing_labels_json
+# @param $4 result_dir
+put_one_workload() {
+    local workload_href="$1"
+    local hostname_display="$2"
+    local existing_labels_json="$3"
+    local result_dir="$4"
+
+    local put_body
+    if [[ "$UPDATE_MODE" == "overwrite" ]]; then
+        put_body=$(jq -nc --arg h "$TARGET_LABEL_HREF" \
+                        '{labels:[{href:$h}]}')
+    else
+        put_body=$(jq -nc \
+            --argjson existing "$existing_labels_json" \
+            --argjson same_key "$SAME_KEY_HREFS_JSON" \
+            --arg     h        "$TARGET_LABEL_HREF" \
+            '{labels: (
+                  ($existing | map(select(.href as $x | ($same_key | index($x)) | not)))
+                + [{href:$h}]
+            )}')
+    fi
+
+    local result_path
+    result_path="$result_dir/$(echo "$workload_href" | tr / _).json"
+
+    if [[ -z "$put_body" ]]; then
+        jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+               --arg e   "failed to build PUT body" \
+            '{kind:"failed",href:$href,hostname:$hn,http:0,error:$e}' > "$result_path"
+        return 0
+    fi
+
+    # Idempotent skip (append only): identical label set → record "skipped"
+    if [[ "$UPDATE_MODE" == "append" ]]; then
+        local before after
+        before=$(echo "$existing_labels_json" | jq -c 'sort_by(.href)')
+        after=$(echo  "$put_body"             | jq -c '.labels | sort_by(.href)')
+        if [[ "$before" == "$after" ]]; then
+            jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+                '{kind:"skipped",href:$href,hostname:$hn}' > "$result_path"
+            return 0
+        fi
+    fi
+
+    local http_code curl_ec
+    if [[ "$DRY_RUN" == "1" ]]; then
+        http_code="000"; curl_ec=0
+    else
+        http_code=$(curl ${CURL_OPTS} -X PUT \
+            -u "${API_USER}:${API_PASS}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d "$put_body" -o /dev/null -w "%{http_code}" \
+            "${PCE_URL_BASE}/api/${API_VERSION}${workload_href}")
+        curl_ec=$?
+    fi
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+            '{kind:"updated",dry_run:true,href:$href,hostname:$hn}' > "$result_path"
+    elif [[ $curl_ec -ne 0 ]]; then
+        jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+               --arg e "curl $curl_ec" \
+            '{kind:"failed",href:$href,hostname:$hn,http:0,error:$e}' > "$result_path"
+    elif [[ $http_code -ge 200 && $http_code -lt 300 ]]; then
+        jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+               --argjson http "$http_code" \
+            '{kind:"updated",dry_run:false,href:$href,hostname:$hn,http:$http}' > "$result_path"
+    else
+        jq -nc --arg href "$workload_href" --arg hn "$hostname_display" \
+               --argjson http "$http_code" \
+            '{kind:"failed",href:$href,hostname:$hn,http:$http,error:("PCE returned "+($http|tostring))}' \
+            > "$result_path"
+    fi
+}
+
 # --- 依賴檢查 ---
 command -v curl >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'curl' 未安裝。請先安裝。"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo >&2 "錯誤：必要套件 'jq' 未安裝。請先安裝。"; exit 1; }
@@ -607,91 +689,51 @@ hlog "--------------------------------------------------"
 # --- 步驟 4: 執行更新 ---
 # 遍歷確認要更新的 Workload 並發送 API 請求
 
-hlog "Updating labels..."
+hlog "Updating labels (parallel=${PARALLEL})..."
+RESULT_DIR=$(mktemp -d "/tmp/iq_results_XXXXXX")
+active=0
 for key in "${!workloads_to_update[@]}"; do
-    # 恢復 href 並提取存儲的信息
     workload_href=$(echo "$key" | tr '_' '/')
     stored_data_json="${workloads_to_update[$key]}"
     existing_labels_json=$(echo "$stored_data_json" | jq -c '.labels // []')
     hostname_display=$(echo "$stored_data_json" | jq -r '.hostname // "N/A"')
 
-    # 根據選擇的模式構造 PUT 請求體 (B2: append strips same-key labels, then adds target)
-    put_body=""
-    if [[ "$UPDATE_MODE" == "overwrite" ]]; then
-        put_body=$(jq -nc --arg h "$TARGET_LABEL_HREF" \
-                        '{labels:[{href:$h}]}')
-    else
-        put_body=$(jq -nc \
-            --argjson existing "$existing_labels_json" \
-            --argjson same_key "$SAME_KEY_HREFS_JSON" \
-            --arg     h        "$TARGET_LABEL_HREF" \
-            '{labels: (
-                  ($existing | map(select(.href as $x | ($same_key | index($x)) | not)))
-                + [{href:$h}]
-            )}')
-    fi
-
-    # 驗證請求體是否成功生成
-    if [[ -z "$put_body" ]]; then
-         echo "ERROR: failed to build PUT body for ${workload_href}" >&2
-         continue
-    fi
-
-    # Idempotency short-circuit (append only): identical label set → flag for Task 9
-    SKIPPED_THIS_ROUND=0
-    if [[ "$UPDATE_MODE" == "append" ]]; then
-        before=$(echo "$existing_labels_json" | jq -c 'sort_by(.href)')
-        after=$(echo  "$put_body"            | jq -c '.labels | sort_by(.href)')
-        if [[ "$before" == "$after" ]]; then
-            SKIPPED_THIS_ROUND=1
-        fi
-    fi
-
-    # 發送 PUT 請求
-    update_url="${PCE_URL_BASE}/api/${API_VERSION}${workload_href}"
-    hlog "Updating workload '${hostname_display}' (${workload_href}) [${UPDATE_MODE}]..."
-
-    if [[ "$DRY_RUN" == "1" ]]; then
-        http_code="000"; curl_exit_code=0
-    else
-        http_code=$(curl ${CURL_OPTS} -X PUT \
-            -u "${API_USER}:${API_PASS}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json" \
-            -d "$put_body" \
-            -o /dev/null \
-            -w "%{http_code}" \
-            "${update_url}")
-        curl_exit_code=$?
-    fi
-
-    # Classify outcome into JSON accumulators
-    if [[ "$DRY_RUN" == "1" ]]; then
-        J_UPDATED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
-                              '{href:$h,hostname:$n,dry_run:true}')")
-        hlog "  -> DRY-RUN success"
-    elif [[ "${SKIPPED_THIS_ROUND:-0}" == "1" ]]; then
-        J_SKIPPED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
-                              '{href:$h,hostname:$n}')")
-        hlog "  -> skipped (already labeled)"
-        SKIPPED_THIS_ROUND=0
-    elif [ $curl_exit_code -ne 0 ]; then
-        J_FAILED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
-                              --arg e "curl $curl_exit_code" \
-                              '{href:$h,hostname:$n,http:0,error:$e}')")
-        echo "ERROR: PUT ${workload_href} failed (curl ${curl_exit_code})" >&2
-    elif [[ $http_code -ge 200 && $http_code -lt 300 ]]; then
-        J_UPDATED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
-                              '{href:$h,hostname:$n}')")
-        hlog "  -> updated (HTTP ${http_code})"
-    else
-        J_FAILED+=("$(jq -nc --arg h "$workload_href" --arg n "$hostname_display" \
-                              --argjson http "${http_code}" \
-                              --arg e "PCE returned ${http_code}" \
-                              '{href:$h,hostname:$n,http:$http,error:$e}')")
-        echo "ERROR: PUT ${workload_href} failed (HTTP ${http_code})" >&2
+    put_one_workload "$workload_href" "$hostname_display" \
+                     "$existing_labels_json" "$RESULT_DIR" &
+    ((active++))
+    if [[ $active -ge $PARALLEL ]]; then
+        wait -n
+        ((active--))
     fi
 done
+wait
+
+# Aggregate per-workload result files into J_UPDATED / J_SKIPPED / J_FAILED
+for f in "$RESULT_DIR"/*.json; do
+    [[ -e "$f" ]] || continue
+    kind=$(jq -r '.kind' "$f")
+    case "$kind" in
+        updated)
+            entry=$(jq -c 'if .dry_run then {href,hostname,dry_run:true}
+                           else {href,hostname} end' "$f")
+            J_UPDATED+=("$entry")
+            if [[ "$(jq -r '.dry_run // false' "$f")" == "true" ]]; then
+                hlog "  -> DRY-RUN success ($(jq -r '.hostname' "$f"))"
+            else
+                hlog "  -> updated (HTTP $(jq -r '.http' "$f")) $(jq -r '.hostname' "$f")"
+            fi
+            ;;
+        skipped)
+            J_SKIPPED+=("$(jq -c '{href,hostname}' "$f")")
+            hlog "  -> skipped (already labeled) $(jq -r '.hostname' "$f")"
+            ;;
+        failed)
+            J_FAILED+=("$(jq -c '{href,hostname,http,error}' "$f")")
+            echo "ERROR: PUT $(jq -r '.href' "$f") failed ($(jq -r '.error' "$f"))" >&2
+            ;;
+    esac
+done
+rm -rf "$RESULT_DIR"
 
 hlog "--------------------------------------------------"
 
