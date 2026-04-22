@@ -41,16 +41,26 @@ Mark each task with its state as work proceeds:
         `resolve_target_label` now detects auth-fail response and exits 4 (was 5)
 
 ### Phase 3 — Scale + audit + security
-- [ ] **Task 11** — `--parallel N` PUT pool (D2): `put_one_workload`, `wait -n` semaphore, result aggregation
+- [x] **Task 11** — `--parallel N` PUT pool (D2): `put_one_workload`, `wait -n` semaphore, result aggregation
 - [x] **Task 12** — CEF audit line with `flock` (E2): `cef_escape`, `emit_cef`, invoke before every exit path
-- [ ] **Task 13** — Security hardening: world-readable creds warning, final sweep of hardcoded-cred residue
+- [x] **Task 13** — Security hardening: world-readable creds warning, final sweep of hardcoded-cred residue
 
 ### Phase 4 — Language + docs + release
-- [ ] **Task 14** — Language sweep (H): all user-facing strings → English
-- [ ] **Task 15** — `docs/FortiSIEM_Integration.md` (v1 primary doc, FortiSIEM-branded — keep)
-      (⚠ see Appendix A.3/A.4/A.5 — correct UI paths, add token-substitution compatibility note)
-- [ ] **Task 16** — `docs/ROADMAP.md` (v2 Python vision)
-- [ ] **Task 17** — `README.md` rewrite for v1.3.0
+- [x] **Task 14** — Language sweep (H): all user-facing strings → English
+- [x] **Task 15** — `docs/FortiSIEM_Integration.md` with Appendix A.3/A.4/A.5 corrections
+- [x] **Task 16** — `docs/ROADMAP.md` (v2 Python vision)
+- [x] **Task 17** — `README.md` rewrite for v1.3.0
+
+### Phase 5 — Acceptance
+- [x] **Task 18** — End-to-end smoke on real PCE (SMOKE-001 on dc, SMOKE-003 on d-api)
+
+### Post-E2E polish (driven by real-PCE findings)
+- [x] Hostname-with-dash classification fix (`2244b8b`)
+- [x] README + FortiSIEM guide expansion: env vars, CMDB, credential binding (`1148afc`)
+- [x] PCE unreachable → exit 4 (was misleadingly exit 5) (`f5647e5`)
+- [x] Default `--credentials-file` search path (`9273e4e`)
+- [x] curl `--connect-timeout 10 --max-time 30` (`dbe7578`)
+- [x] Script renamed to `illumio-quarantine.sh` (`3112844`)
 
 ### Phase 5 — Acceptance
 - [ ] **Task 18** — End-to-end smoke on real PCE (manual checklist)

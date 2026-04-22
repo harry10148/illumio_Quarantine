@@ -8,9 +8,12 @@
 
 ## Where we are
 
-**Implementation in progress.** 12/18 complete on branch `v1.3.0-fortisiem`.
+**Implementation complete.** 18/18 plan tasks + 6 post-E2E polish commits on branch `v1.3.0-fortisiem` (31 commits ahead of main).
 
-- Full test suite: 50/50 pass
+- Full test suite: 54/55 (1 pre-existing timing flake, load-dependent)
+- Real PCE E2E verified on hostname `dc` and `d-api`
+- Script renamed: `illumio-quarantine.sh`
+- Ready to merge + tag `v1.3.0`
 - Next: Task 13 (security hardening — world-readable creds warning)
 - Execution mode: subagent-driven, B-mode compression (small tasks spec-review-only)
 
