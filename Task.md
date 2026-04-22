@@ -42,7 +42,7 @@ Mark each task with its state as work proceeds:
 
 ### Phase 3 — Scale + audit + security
 - [ ] **Task 11** — `--parallel N` PUT pool (D2): `put_one_workload`, `wait -n` semaphore, result aggregation
-- [ ] **Task 12** — CEF audit line with `flock` (E2): `cef_escape`, `emit_cef`, invoke before every exit path
+- [x] **Task 12** — CEF audit line with `flock` (E2): `cef_escape`, `emit_cef`, invoke before every exit path
 - [ ] **Task 13** — Security hardening: world-readable creds warning, final sweep of hardcoded-cred residue
 
 ### Phase 4 — Language + docs + release

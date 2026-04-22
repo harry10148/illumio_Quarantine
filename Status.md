@@ -8,10 +8,10 @@
 
 ## Where we are
 
-**Implementation in progress.** 10/18 complete on branch `v1.3.0-fortisiem`.
+**Implementation in progress.** 12/18 complete on branch `v1.3.0-fortisiem`.
 
-- Full test suite: 41/41 pass
-- Next: Task 11 (`--parallel N` PUT pool, D2)
+- Full test suite: 50/50 pass
+- Next: Task 13 (security hardening — world-readable creds warning)
 - Execution mode: subagent-driven, B-mode compression (small tasks spec-review-only)
 
 The 18-task implementation plan is finalized and locked at:
