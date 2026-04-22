@@ -29,6 +29,13 @@ teardown() { common_teardown; }
     [[ "$status" -eq 4 ]]
 }
 
+@test "exit 4 on PCE unreachable (curl network failure)" {
+    export MOCK_CURL_UNREACHABLE="1"
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --mode append --non-interactive --dry-run --json
+    [[ "$status" -eq 4 ]]
+}
+
 @test "exit 5 on invalid --mode" {
     run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
         --mode bogus --non-interactive --dry-run --json

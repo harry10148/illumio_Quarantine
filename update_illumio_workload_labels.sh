@@ -191,10 +191,16 @@ emit_cef() {
 resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
-        local resp
+        local resp curl_ec
         resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
+        curl_ec=$?
+        if [[ $curl_ec -ne 0 || -z "$resp" ]]; then
+            echo "ERROR: PCE unreachable (curl exit $curl_ec) at ${base}/labels/${LABEL_ID}" >&2
+            emit_cef "failure" 2>/dev/null || true
+            exit 4
+        fi
         if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
             echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
         fi
@@ -206,11 +212,17 @@ resolve_target_label() {
         TARGET_LABEL_KEY=$(echo   "$resp" | jq -r '.key')
         TARGET_LABEL_VALUE=$(echo "$resp" | jq -r '.value')
     else
-        local resp enc_key
+        local resp enc_key curl_ec
         enc_key=$(_urlenc "$LABEL_KEY")
         resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
+        curl_ec=$?
+        if [[ $curl_ec -ne 0 || -z "$resp" ]]; then
+            echo "ERROR: PCE unreachable (curl exit $curl_ec) at ${base}/labels?key=${enc_key}" >&2
+            emit_cef "failure" 2>/dev/null || true
+            exit 4
+        fi
         if echo "$resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
             echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
         fi
@@ -225,11 +237,17 @@ resolve_target_label() {
     fi
 
     # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
-    local same_resp enc_target_key
+    local same_resp enc_target_key curl_ec
     enc_target_key=$(_urlenc "$TARGET_LABEL_KEY")
     same_resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
                     -H 'Accept: application/json' \
                     "${base}/labels?key=${enc_target_key}")
+    curl_ec=$?
+    if [[ $curl_ec -ne 0 || -z "$same_resp" ]]; then
+        echo "ERROR: PCE unreachable (curl exit $curl_ec) at ${base}/labels?key=${enc_target_key}" >&2
+        emit_cef "failure" 2>/dev/null || true
+        exit 4
+    fi
     SAME_KEY_HREFS_JSON=$(echo "$same_resp" | jq -c '[.[].href]')
 }
 

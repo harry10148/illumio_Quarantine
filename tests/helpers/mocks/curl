@@ -24,6 +24,11 @@ done
 
 printf '%s\t%s\t%s\n' "$method" "$url" "$data" >> "$MOCK_CURL_LOG"
 
+# Unreachable short-circuit: simulate network failure on ANY GET
+if [[ "$method" == "GET" && "${MOCK_CURL_UNREACHABLE:-0}" == "1" ]]; then
+    exit 7
+fi
+
 # Auth-fail short-circuit: return unauthorized object on ANY GET
 if [[ "$method" == "GET" && "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
     echo -n '{"error":"unauthorized"}'; exit 0
