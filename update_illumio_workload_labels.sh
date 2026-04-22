@@ -26,7 +26,7 @@
 
 # --- 配置 ---
 API_VERSION="v2"                         # 要使用的 Illumio API 版本
-CURL_OPTS="-s -k"                        # curl 選項 (-s 靜默, -k 忽略 SSL 校驗)
+CURL_OPTS="-s -k --connect-timeout 10 --max-time 30"  # silent, skip cert verify, 10s connect / 30s total
 
 # Credentials are loaded by load_credentials() after argument parsing.
 # Precedence: CLI flags > env vars > --credentials-file > script defaults.
@@ -206,7 +206,7 @@ resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
         local resp curl_ec
-        resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
         curl_ec=$?
@@ -228,7 +228,7 @@ resolve_target_label() {
     else
         local resp enc_key curl_ec
         enc_key=$(_urlenc "$LABEL_KEY")
-        resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
         curl_ec=$?
@@ -253,7 +253,7 @@ resolve_target_label() {
     # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
     local same_resp enc_target_key curl_ec
     enc_target_key=$(_urlenc "$TARGET_LABEL_KEY")
-    same_resp=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+    same_resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
                     -H 'Accept: application/json' \
                     "${base}/labels?key=${enc_target_key}")
     curl_ec=$?
@@ -547,7 +547,7 @@ done
 
 if [[ "$needs_full" == "1" ]]; then
     SEARCH_STRATEGY="full_scan"
-    api_response=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+    api_response=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
         -H 'Accept: application/json' \
         "${WORKLOADS_BASE}?max_results=100000")
 else
@@ -558,11 +558,11 @@ else
         t=$(classify_term "$term")
         enc_term=$(_urlenc "$term")
         if [[ "$t" == "ip" ]]; then
-            part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?ip_address=${enc_term}")
         else
-            part=$(curl -s -k -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?hostname=${enc_term}")
         fi

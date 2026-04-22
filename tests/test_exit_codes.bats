@@ -41,3 +41,10 @@ teardown() { common_teardown; }
         --mode bogus --non-interactive --dry-run --json
     [[ "$status" -eq 5 ]]
 }
+
+@test "--connect-timeout flag present in CURL_OPTS" {
+    # Static check: the script must use --connect-timeout so unreachable PCEs fail fast.
+    run grep -n 'connect-timeout' "$SCRIPT"
+    assert_success
+    assert_output --partial "CURL_OPTS"
+}
