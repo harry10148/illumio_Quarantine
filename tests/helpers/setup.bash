@@ -14,6 +14,12 @@ common_setup() {
     : > "$MOCK_CURL_LOG"
     export PATH="${REPO_ROOT}/tests/helpers/mocks:$PATH"
 
+    # Isolate credentials auto-discovery: point HOME at an empty dir and cd
+    # away from REPO_ROOT so ./config/quarantine.conf isn't auto-picked up.
+    export HOME="$BATS_TMPDIR_LOCAL/fake_home"
+    mkdir -p "$HOME"
+    cd "$BATS_TMPDIR_LOCAL"
+
     export ILLUMIO_QUARANTINE_API_USER="test_user"
     export ILLUMIO_QUARANTINE_API_PASS="test_pass"
     export ILLUMIO_QUARANTINE_PCE_URL="https://pce.test.local:8443"

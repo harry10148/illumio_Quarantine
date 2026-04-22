@@ -48,6 +48,20 @@ EOF
     assert_failure 6
 }
 
+@test "auto-discovers conf at ~/.config/illumio_quarantine/quarantine.conf" {
+    mkdir -p "$HOME/.config/illumio_quarantine"
+    cat > "$HOME/.config/illumio_quarantine/quarantine.conf" <<EOF
+API_USER="auto_user"
+API_PASS="auto_pass"
+EOF
+    chmod 600 "$HOME/.config/illumio_quarantine/quarantine.conf"
+
+    unset ILLUMIO_QUARANTINE_API_USER ILLUMIO_QUARANTINE_API_PASS
+    run bash "$SCRIPT" --targets "server1.lab.local" --label-id 878 \
+        --non-interactive --dry-run --json
+    assert_success
+}
+
 @test "warns on world-readable credentials file" {
     cat > "$BATS_TMPDIR_LOCAL/c.conf" <<EOF
 API_USER="u"; API_PASS="p"

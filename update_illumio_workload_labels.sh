@@ -90,6 +90,20 @@ classify_term() {
 }
 
 load_credentials() {
+    # Auto-discover a credentials file if --credentials-file was not given
+    if [[ -z "${CREDENTIALS_FILE:-}" ]]; then
+        for p in \
+            "./config/quarantine.conf" \
+            "${HOME}/.config/illumio_quarantine/quarantine.conf" \
+            "/etc/illumio_quarantine/quarantine.conf"
+        do
+            if [[ -r "$p" ]]; then
+                CREDENTIALS_FILE="$p"
+                break
+            fi
+        done
+    fi
+
     # Step 1: --credentials-file (lowest of the three non-default sources)
     if [[ -n "${CREDENTIALS_FILE:-}" ]]; then
         if [[ ! -r "$CREDENTIALS_FILE" ]]; then
