@@ -612,8 +612,8 @@ while IFS= read -r workload_json; do
                      done 3< <(echo "$interfaces_json" | jq -c '.[].address') # 使用 FD 3 讀取接口 IP
                  fi
             fi
-        # 2. 範圍匹配 (-)
-        elif [[ "$term" == *-* ]]; then
+        # 2. 範圍匹配 (-)  (hostnames starting with a letter are not ranges)
+        elif [[ "$term" == *-* && ! "$term" =~ ^[a-zA-Z] ]]; then
             IFS='-' read -r range_start range_end <<< "$term"
             range_start=$(echo "$range_start" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             range_end=$(echo "$range_end" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')

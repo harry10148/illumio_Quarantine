@@ -44,3 +44,12 @@ teardown() { common_teardown; }
     # exit 3 no_match because unmanaged was filtered out
     [[ "$status" -eq 3 ]]
 }
+
+@test "hostname with dash classifies and matches (regression)" {
+    run bash "$SCRIPT" --targets "web-01" --label-id 878 \
+        --non-interactive --dry-run --json
+    assert_success
+    [[ "$(echo "$output" | jq -r '.search_strategy')" == "server_side" ]]
+    [[ "$(echo "$output" | jq '.counts.matched')" == "1" ]]
+    [[ "$(echo "$output" | jq -r '.matched[0].hostname')" == "web-01" ]]
+}
