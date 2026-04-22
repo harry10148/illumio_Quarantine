@@ -95,7 +95,7 @@ Env vars override the credentials file. CLI flags override env vars.
 ## Quick start — interactive (operator at a shell)
 
 ```bash
-./update_illumio_workload_labels.sh
+./illumio-quarantine.sh
 # Uses ./config/quarantine.conf auto-discovery. Prompts for targets, label, mode, confirmation.
 ```
 
@@ -107,7 +107,7 @@ export ILLUMIO_QUARANTINE_API_PASS=<secret>
 export ILLUMIO_QUARANTINE_PCE_URL=https://pce.lab.local:8443
 export ILLUMIO_QUARANTINE_ORG_ID=1
 
-./update_illumio_workload_labels.sh \
+./illumio-quarantine.sh \
     --targets "10.0.0.5" --label-id 134 \
     --non-interactive
 ```
@@ -119,7 +119,7 @@ export ILLUMIO_QUARANTINE_ORG_ID=1
 With environment variables baked in once:
 
 ```bash
-./update_illumio_workload_labels.sh \
+./illumio-quarantine.sh \
     --targets "${incidentSrcIpAddr}" \
     --label-key Quarantine --label-value Severe \
     --non-interactive --json \
@@ -130,7 +130,7 @@ With environment variables baked in once:
 Without env vars (explicit paths everywhere):
 
 ```bash
-./update_illumio_workload_labels.sh \
+./illumio-quarantine.sh \
     --targets "10.0.0.5,server1.lab.local,10.20.30.0/24" \
     --label-key Quarantine --label-value Severe \
     --mode append --non-interactive --json --parallel 4 \
@@ -151,7 +151,7 @@ Remediation Script body, Automation Policy trigger, CEF audit parser).
 ## CLI reference
 
 ```bash
-./update_illumio_workload_labels.sh --help
+./illumio-quarantine.sh --help
 ```
 
 ## JSON schema

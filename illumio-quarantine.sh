@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# 腳本名稱: update_illumio_workload_labels.sh
+# 腳本名稱: illumio-quarantine.sh
 # 描述:     根據多種條件 (IP、主機名、CIDR、IP 範圍、前綴) 尋找 Illumio Workloads，
 #           並在用戶確認後，以指定模式（增加或覆蓋）為匹配到的 'managed' Workloads
 #           添加/設置指定的 Label。
@@ -15,7 +15,7 @@
 #   - ipcalc: 用於執行 CIDR 網路計算 (必需)。
 #
 # 使用方法:
-#   ./update_illumio_workload_labels.sh
+#   ./illumio-quarantine.sh
 #   腳本將提示輸入搜索條件、Label ID 及更新模式。
 #
 # !!! SECURITY NOTES !!!
@@ -375,7 +375,7 @@ CLI_ORG_ID=""
 
 print_usage() {
     cat <<'USAGE'
-Usage: update_illumio_workload_labels.sh [OPTIONS]
+Usage: illumio-quarantine.sh [OPTIONS]
 
 Targets & action:
   --targets <csv>                     IP/hostname/CIDR/range/prefix (CSV)
@@ -429,7 +429,7 @@ while [[ $# -gt 0 ]]; do
         --pce-url)          CLI_PCE_URL="$2";      shift 2 ;;
         --org-id)           CLI_ORG_ID="$2";       shift 2 ;;
         -h|--help)          print_usage; exit 0 ;;
-        -V|--version)       echo "update_illumio_workload_labels.sh $VERSION"; exit 0 ;;
+        -V|--version)       echo "illumio-quarantine.sh $VERSION"; exit 0 ;;
         *)
             echo "ERROR: unknown option: $1" >&2
             print_usage >&2

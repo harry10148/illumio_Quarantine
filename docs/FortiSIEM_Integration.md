@@ -1,6 +1,6 @@
 # FortiSIEM — Illumio Quarantine Integration
 
-Wires `update_illumio_workload_labels.sh` v1.3.0 into FortiSIEM 7.5 so that
+Wires `illumio-quarantine.sh` v1.3.0 into FortiSIEM 7.5 so that
 when an incident fires, the matching Illumio PCE workload is auto-quarantined
 by label.
 
@@ -64,7 +64,7 @@ The script auto-discovers `./config/quarantine.conf`, then
 ### Local smoke
 
 ```bash
-./update_illumio_workload_labels.sh \
+./illumio-quarantine.sh \
     --targets "<test workload>" --label-key Quarantine --label-value Severe \
     --non-interactive --dry-run --json
 ```
@@ -119,7 +119,7 @@ On the quarantine host, restrict the service account to run only the script:
 
 ```bash
 # /etc/sudoers.d/illumio-quarantine
-fortisiem-remediator ALL=(root) NOPASSWD: /opt/illumio_Quarantine/update_illumio_workload_labels.sh
+fortisiem-remediator ALL=(root) NOPASSWD: /opt/illumio_Quarantine/illumio-quarantine.sh
 ```
 
 Disable shell access and allow only the specific command (SSH `ForceCommand`
@@ -137,7 +137,7 @@ pattern) if paranoid.
    - **Remediation Script Name**: `illumio_quarantine_apply.sh` (label only — the script executed is what you put in Script Content)
    - **Remediation Script Content** (with env vars baked on the host):
      ```bash
-     /opt/illumio_Quarantine/update_illumio_workload_labels.sh \
+     /opt/illumio_Quarantine/illumio-quarantine.sh \
          --targets "${incidentSrcIpAddr}" \
          --label-key Quarantine --label-value Severe \
          --mode append \
@@ -147,7 +147,7 @@ pattern) if paranoid.
      ```
      Without env vars baked (explicit paths):
      ```bash
-     /opt/illumio_Quarantine/update_illumio_workload_labels.sh \
+     /opt/illumio_Quarantine/illumio-quarantine.sh \
          --targets "${incidentSrcIpAddr}" \
          --label-key Quarantine --label-value Severe \
          --mode append --non-interactive --json --parallel 4 \
@@ -240,7 +240,7 @@ when the success event arrives.
 SSH to the quarantine host as the service account and run:
 
 ```bash
-/opt/illumio_Quarantine/update_illumio_workload_labels.sh \
+/opt/illumio_Quarantine/illumio-quarantine.sh \
     --targets "<test hostname>" --label-key Quarantine --label-value Severe \
     --mode append --non-interactive --dry-run --json \
     --correlation-id "SMOKE-001" --reason "FortiSIEM smoke test" \

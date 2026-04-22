@@ -5,7 +5,7 @@ _load_libs() {
 
 common_setup() {
     export REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
-    export SCRIPT="${REPO_ROOT}/update_illumio_workload_labels.sh"
+    export SCRIPT="${REPO_ROOT}/illumio-quarantine.sh"
     export BATS_TMPDIR_LOCAL="${BATS_RUN_TMPDIR:-/tmp}/iq_bats_$$"
     mkdir -p "$BATS_TMPDIR_LOCAL"
 
