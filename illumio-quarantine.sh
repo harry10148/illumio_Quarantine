@@ -26,7 +26,7 @@
 
 # --- 配置 ---
 API_VERSION="v2"                         # 要使用的 Illumio API 版本
-CURL_OPTS="-s -k --connect-timeout 10 --max-time 30"  # silent, skip cert verify, 10s connect / 30s total
+CURL_OPTS="-s --connect-timeout 10 --max-time 30"  # silent, verify certs by default, 10s connect / 30s total
 
 # Credentials are loaded by load_credentials() after argument parsing.
 # Precedence: CLI flags > env vars > --credentials-file > script defaults.
@@ -80,8 +80,9 @@ is_in_range() {
 classify_term() {
     local t="$1"
     if [[ "$t" == */* ]]; then echo "cidr"; return; fi
-    [[ "$t" == *-* && ! "$t" =~ ^[a-zA-Z] ]] && { echo "range"; return; }
-    [[ "$t" == *~* ]] && { echo "range"; return; }
+    if is_ipv4_range_dash "$t" || is_ipv4_range_tilde "$t"; then
+        echo "range"; return
+    fi
     if [[ "$t" == *. && ! "$t" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo "prefix"; return
     fi
@@ -89,9 +90,75 @@ classify_term() {
     echo "hostname"
 }
 
+is_ipv4_range_dash() {
+    local t="$1" s e extra s_int e_int
+    IFS='-' read -r s e extra <<< "$t"
+    [[ -n "$s" && -n "$e" && -z "$extra" ]] || return 1
+    s_int=$(ip_to_int "$s" || true)
+    e_int=$(ip_to_int "$e" || true)
+    [[ "$s_int" != "-1" && "$e_int" != "-1" ]]
+}
+
+is_ipv4_range_tilde() {
+    local t="$1" s e extra s_int e_int
+    IFS='~' read -r s e extra <<< "$t"
+    [[ -n "$s" && -n "$e" && -z "$extra" ]] || return 1
+    s_int=$(ip_to_int "$s" || true)
+    e_int=$(ip_to_int "$e" || true)
+    [[ "$s_int" != "-1" && "$e_int" != "-1" ]]
+}
+
+load_credentials_file() {
+    local creds_file="$1"
+    local line key raw value
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        line="$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+        [[ -z "$line" || "$line" == \#* ]] && continue
+
+        if [[ "$line" =~ ^export[[:space:]]+([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            raw="${BASH_REMATCH[2]}"
+        elif [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            raw="${BASH_REMATCH[2]}"
+        else
+            echo "ERROR: unsupported syntax in credentials file: $creds_file" >&2
+            exit 5
+        fi
+
+        raw="$(printf '%s' "$raw" | sed -E 's/[[:space:]]+$//')"
+        if [[ "$raw" =~ ^\"(.*)\"$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        elif [[ "$raw" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        else
+            if [[ "$raw" =~ [\$\`\(\)\;\&\|\<\>] ]]; then
+                echo "ERROR: unsafe unquoted value for ${key} in credentials file: $creds_file" >&2
+                exit 5
+            fi
+            value="$raw"
+        fi
+
+        case "$key" in
+            API_USER)     API_USER="$value" ;;
+            API_PASS)     API_PASS="$value" ;;
+            PCE_URL_BASE) PCE_URL_BASE="$value" ;;
+            ORG_ID)       ORG_ID="$value" ;;
+            *) echo "WARNING: ignoring unknown key '${key}' in credentials file: $creds_file" >&2 ;;
+        esac
+    done < "$creds_file"
+}
+
 load_credentials() {
+    local env_has_creds=0
+    if [[ -n "${ILLUMIO_QUARANTINE_API_USER:-}" && -n "${ILLUMIO_QUARANTINE_API_PASS:-}" ]]; then
+        env_has_creds=1
+    fi
+
     # Auto-discover a credentials file if --credentials-file was not given
-    if [[ -z "${CREDENTIALS_FILE:-}" ]]; then
+    if [[ -z "${CREDENTIALS_FILE:-}" && "$env_has_creds" != "1" ]]; then
         for p in \
             "./config/quarantine.conf" \
             "${HOME}/.config/illumio_quarantine/quarantine.conf" \
@@ -110,8 +177,7 @@ load_credentials() {
             echo "ERROR: credentials file not readable: $CREDENTIALS_FILE" >&2
             exit 5
         fi
-        # shellcheck disable=SC1090
-        source "$CREDENTIALS_FILE"
+        load_credentials_file "$CREDENTIALS_FILE"
         if [[ "$(uname)" == "Linux" ]]; then
             local mode
             mode=$(stat -c '%a' "$CREDENTIALS_FILE" 2>/dev/null || echo "000")
@@ -262,6 +328,14 @@ resolve_target_label() {
         emit_cef "failure" 2>/dev/null || true
         exit 4
     fi
+    if echo "$same_resp" | jq -e 'type=="object" and (has("error") or has("unauthorized"))' >/dev/null 2>&1; then
+        echo "ERROR: PCE authentication failed" >&2; emit_cef "failure"; exit 4
+    fi
+    if ! echo "$same_resp" | jq -e 'type=="array"' >/dev/null 2>&1; then
+        echo "ERROR: PCE response is not a JSON array for labels?key=${enc_target_key}" >&2
+        emit_cef "failure"
+        exit 4
+    fi
     SAME_KEY_HREFS_JSON=$(echo "$same_resp" | jq -c '[.[].href]')
 }
 
@@ -378,6 +452,7 @@ PARALLEL=1
 CREDENTIALS_FILE=""
 CLI_PCE_URL=""
 CLI_ORG_ID=""
+INSECURE=0
 
 print_usage() {
     cat <<'USAGE'
@@ -397,9 +472,10 @@ Automation:
   --reason <text>                     Incident/rule description
   --audit-file <path>                 Append CEF audit line (flock-protected)
   --parallel <n>                      Concurrent PUTs (1..20, default 1)
+  --insecure                          Disable TLS cert verification (not recommended)
 
 Overrides:
-  --credentials-file <path>           Bash file with API_USER/API_PASS/[PCE_URL_BASE/ORG_ID]
+  --credentials-file <path>           key=value file with API_USER/API_PASS/[PCE_URL_BASE/ORG_ID]
   --pce-url <url>                     Override PCE base URL
   --org-id <id>                       Override Org ID
 
@@ -431,6 +507,7 @@ while [[ $# -gt 0 ]]; do
         --reason)           require_arg "$@"; REASON="$2";           shift 2 ;;
         --audit-file)       require_arg "$@"; AUDIT_FILE="$2";       shift 2 ;;
         --parallel)         require_arg "$@"; PARALLEL="$2";         shift 2 ;;
+        --insecure)         INSECURE=1;           shift ;;
         --credentials-file) require_arg "$@"; CREDENTIALS_FILE="$2"; shift 2 ;;
         --pce-url)          require_arg "$@"; CLI_PCE_URL="$2";      shift 2 ;;
         --org-id)           require_arg "$@"; CLI_ORG_ID="$2";       shift 2 ;;
@@ -449,6 +526,10 @@ done
 # Validate --parallel
 if ! [[ "$PARALLEL" =~ ^[0-9]+$ ]] || [[ "$PARALLEL" -lt 1 || "$PARALLEL" -gt 20 ]]; then
     echo "ERROR: --parallel must be an integer in 1..20" >&2; exit 5
+fi
+
+if [[ "$INSECURE" == "1" ]]; then
+    CURL_OPTS="${CURL_OPTS} -k"
 fi
 
 # Mutual exclusion / combinations for label target
@@ -654,7 +735,7 @@ while IFS= read -r workload_json; do
                  fi
             fi
         # 2. 範圍匹配 (-)  (hostnames starting with a letter are not ranges)
-        elif [[ "$term" == *-* && ! "$term" =~ ^[a-zA-Z] ]]; then
+        elif is_ipv4_range_dash "$term"; then
             IFS='-' read -r range_start range_end <<< "$term"
             range_start=$(echo "$range_start" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             range_end=$(echo "$range_end" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -672,7 +753,7 @@ while IFS= read -r workload_json; do
                 done 3< <(echo "$interfaces_json" | jq -c '.[].address')
             fi
         # 3. 範圍匹配 (~)
-        elif [[ "$term" == *~* ]]; then
+        elif is_ipv4_range_tilde "$term"; then
              IFS='~' read -r range_start range_end <<< "$term"
              range_start=$(echo "$range_start" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
              range_end=$(echo "$range_end" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')

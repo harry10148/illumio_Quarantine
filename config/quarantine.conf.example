@@ -1,6 +1,7 @@
 # illumio_Quarantine credential file.
 # Copy to config/quarantine.conf and `chmod 600` before use.
-# Sourced when --credentials-file is given. See README for override precedence.
+# Parsed as key=value when --credentials-file is given. No shell execution.
+# See README for override precedence.
 
 API_USER=""
 API_PASS=""

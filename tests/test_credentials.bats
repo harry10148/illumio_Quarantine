@@ -24,7 +24,8 @@ EOF
 
 @test "CLI --pce-url beats env beats credentials-file (precedence G)" {
     cat > "$BATS_TMPDIR_LOCAL/creds.conf" <<EOF
-API_USER="u"; API_PASS="p"
+API_USER="u"
+API_PASS="p"
 PCE_URL_BASE="https://pce-file.local:8443"
 EOF
     chmod 600 "$BATS_TMPDIR_LOCAL/creds.conf"
@@ -64,7 +65,8 @@ EOF
 
 @test "warns on world-readable credentials file" {
     cat > "$BATS_TMPDIR_LOCAL/c.conf" <<EOF
-API_USER="u"; API_PASS="p"
+API_USER="u"
+API_PASS="p"
 EOF
     chmod 644 "$BATS_TMPDIR_LOCAL/c.conf"
     unset ILLUMIO_QUARANTINE_API_USER ILLUMIO_QUARANTINE_API_PASS
@@ -73,4 +75,38 @@ EOF
         --credentials-file "$BATS_TMPDIR_LOCAL/c.conf"
     assert_success
     [[ "$output" == *"insecure permissions"* ]] || [[ "$stderr" == *"insecure permissions"* ]]
+}
+
+@test "auto-discovered credentials file is skipped when env creds are present" {
+    marker="$BATS_TMPDIR_LOCAL/marker"
+    mkdir -p "$BATS_TMPDIR_LOCAL/config"
+    cat > "$BATS_TMPDIR_LOCAL/config/quarantine.conf" <<EOF
+API_USER="file_user"
+API_PASS="file_pass"
+echo pwned > "$marker"
+EOF
+    chmod 600 "$BATS_TMPDIR_LOCAL/config/quarantine.conf"
+
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --non-interactive --dry-run --json
+    assert_success
+    [[ ! -f "$marker" ]]
+}
+
+@test "credentials parser rejects shell syntax and never executes it" {
+    marker="$BATS_TMPDIR_LOCAL/marker"
+    cat > "$BATS_TMPDIR_LOCAL/unsafe.conf" <<EOF
+API_USER="u"
+API_PASS="p"
+echo pwned > "$marker"
+EOF
+    chmod 600 "$BATS_TMPDIR_LOCAL/unsafe.conf"
+    unset ILLUMIO_QUARANTINE_API_USER ILLUMIO_QUARANTINE_API_PASS
+
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --non-interactive --dry-run --json \
+        --credentials-file "$BATS_TMPDIR_LOCAL/unsafe.conf"
+    assert_failure 5
+    assert_output --partial "unsupported syntax in credentials file"
+    [[ ! -f "$marker" ]]
 }

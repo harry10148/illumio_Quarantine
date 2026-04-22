@@ -48,3 +48,8 @@ teardown() { common_teardown; }
     assert_success
     assert_output --partial "CURL_OPTS"
 }
+
+@test "TLS verification is enabled by default (no global -k in CURL_OPTS)" {
+    run grep -n 'CURL_OPTS="-s --connect-timeout 10 --max-time 30"' "$SCRIPT"
+    assert_success
+}

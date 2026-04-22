@@ -5,8 +5,16 @@
 
 **Execution mode:** Subagent-driven (B-mode: small tasks compressed to spec-review-only, large tasks keep dual review).
 
-**Progress:** 4/18 tasks complete on branch `v1.3.0-fortisiem`. 19/21 tests green.
-Paused 2026-04-22 for rate-limit breather; resume at Plan Task 5.
+**Progress:** 18/18 tasks complete on branch `v1.3.0-fortisiem`. 63/63 tests green.
+2026-04-22: code-review remediation pass complete.
+
+## 2026-04-22 code review follow-ups
+
+- [x] **CR-1 (P1 security)** — Prevent auto-sourced `./config/quarantine.conf` from executing arbitrary shell code.
+- [x] **CR-2 (P1 correctness)** — In `resolve_target_label`, validate/auth-check `same_resp` (`GET /labels?key=...`) before building `SAME_KEY_HREFS_JSON`.
+- [x] **CR-3 (P1 correctness)** — Fix term classification so numeric-leading hyphen hostnames (e.g. `1-web`) are not treated as IP ranges.
+- [x] **CR-4 (P1 security)** — Remove default `curl -k` behavior or gate it behind explicit opt-in flag.
+- [x] **CR-4-docs** — Document TLS-default behavior and `--insecure` usage in README + FortiSIEM integration guide.
 
 **Test runner:** `scripts/run_tests.sh` (exists AFTER Task 1).
 

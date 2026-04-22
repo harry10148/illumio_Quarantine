@@ -49,6 +49,13 @@ ILLUMIO_QUARANTINE_AUDIT_FILE=/var/log/illumio_quarantine.cef
 This lets the FortiSIEM Remediation Script body stay short (it doesn't need
 to repeat these values on every invocation).
 
+### TLS certificate verification
+
+`illumio-quarantine.sh` verifies PCE TLS certificates by default.
+Only add `--insecure` in short-lived lab scenarios (for example, temporary
+self-signed cert bootstrap). For production FortiSIEM automation, install the
+correct CA chain on the quarantine host and keep `--insecure` off.
+
 ### Credentials — conf file (alternative)
 
 ```bash
@@ -156,6 +163,16 @@ pattern) if paranoid.
          --credentials-file /opt/illumio_Quarantine/config/quarantine.conf \
          --audit-file /var/log/illumio_quarantine.cef
      ```
+     Lab-only (self-signed bootstrap):
+     ```bash
+     /opt/illumio_Quarantine/illumio-quarantine.sh \
+         --targets "${incidentSrcIpAddr}" \
+         --label-key Quarantine --label-value Severe \
+         --mode append --non-interactive --json \
+         --correlation-id "${incidentId}" \
+         --reason "${ruleName}" \
+         --insecure
+     ```
    - **Description**: "Apply Quarantine:Severe label to Illumio workload matching the incident source IP."
 3. **Save.**
 
@@ -246,6 +263,9 @@ SSH to the quarantine host as the service account and run:
     --correlation-id "SMOKE-001" --reason "FortiSIEM smoke test" \
     --audit-file /var/log/illumio_quarantine.cef
 ```
+
+If the lab PCE endpoint uses a temporary self-signed cert, add `--insecure`
+for this smoke only, then remove it after CA trust is fixed.
 
 Verify:
 - exit `0` (or `3` for a fake host — both OK)

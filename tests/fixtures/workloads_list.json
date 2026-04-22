@@ -33,5 +33,13 @@
     "public_ip": "203.0.113.13",
     "interfaces": [{"address": "192.0.2.50"}],
     "labels": []
+  },
+  {
+    "href": "/orgs/1/workloads/55555555-5555-5555-5555-555555555555",
+    "hostname": "1-web",
+    "managed": true,
+    "public_ip": "203.0.113.14",
+    "interfaces": [{"address": "172.31.9.9"}],
+    "labels": []
   }
 ]

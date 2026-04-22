@@ -28,19 +28,24 @@ teardown() { common_teardown; }
     [[ "$(echo "$output" | jq '.counts.failed')" == "2" ]]
 }
 
-@test "parallel actually overlaps (faster than serial)" {
+@test "parallel starts PUTs closer together than serial" {
     export MOCK_CURL_PUT_DELAY_MS=500
 
-    start=$(date +%s%3N)
     bash "$SCRIPT" --targets "10.0.0.0/24" --label-id 878 \
         --mode append --non-interactive --json --parallel 1 >/dev/null
-    serial_ms=$(( $(date +%s%3N) - start ))
+    mapfile -t serial_ts < <(awk -F'\t' '$1=="PUT"{print $4}' "$MOCK_CURL_LOG")
+    [[ "${#serial_ts[@]}" -eq 2 ]]
+    serial_gap=$(( serial_ts[1] - serial_ts[0] ))
+    [[ "$serial_gap" -lt 0 ]] && serial_gap=$(( -serial_gap ))
 
     : > "$MOCK_CURL_LOG"
-    start=$(date +%s%3N)
     bash "$SCRIPT" --targets "10.0.0.0/24" --label-id 878 \
         --mode append --non-interactive --json --parallel 4 >/dev/null
-    par_ms=$(( $(date +%s%3N) - start ))
+    mapfile -t parallel_ts < <(awk -F'\t' '$1=="PUT"{print $4}' "$MOCK_CURL_LOG")
+    [[ "${#parallel_ts[@]}" -eq 2 ]]
+    parallel_gap=$(( parallel_ts[1] - parallel_ts[0] ))
+    [[ "$parallel_gap" -lt 0 ]] && parallel_gap=$(( -parallel_gap ))
 
-    [[ "$par_ms" -lt $(( serial_ms * 3 / 4 )) ]]
+    [[ "$parallel_gap" -lt "$serial_gap" ]]
+    [[ "$serial_gap" -ge 300 ]]
 }

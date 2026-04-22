@@ -72,3 +72,11 @@ _run_json() {
     run grep -F "labels?key=Q%20K" "$MOCK_CURL_LOG"
     assert_success
 }
+
+@test "--label-id flow exits 4 when same-key labels query auth-fails" {
+    export MOCK_CURL_AUTH_FAIL_LABELS_KEY="1"
+    run bash "$SCRIPT" --targets "server1.lab.local" --label-id 878 \
+        --non-interactive --dry-run --json
+    assert_failure 4
+    assert_output --partial "authentication failed"
+}

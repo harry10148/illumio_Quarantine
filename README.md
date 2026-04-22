@@ -49,7 +49,13 @@ ILLUMIO_QUARANTINE_AUDIT_FILE=/var/log/illumio_quarantine.cef
 
 Env vars override the credentials file. CLI flags override env vars.
 
-**Precedence**: `CLI flag` > `ILLUMIO_QUARANTINE_*` env var > `--credentials-file` sourced value > script default.
+**Precedence**: `CLI flag` > `ILLUMIO_QUARANTINE_*` env var > `--credentials-file` parsed value > script default.
+
+### TLS behavior (important)
+
+- By default, `illumio-quarantine.sh` verifies the PCE TLS certificate.
+- Use `--insecure` only in controlled lab/testing environments (for example, temporary self-signed cert setup).
+- For production, install the proper CA chain on the host and do **not** use `--insecure`.
 
 ---
 
@@ -87,6 +93,7 @@ Env vars override the credentials file. CLI flags override env vars.
 | `--mode append\|overwrite` | `append` | `append` preserves existing business labels; `overwrite` wipes |
 | `--parallel N` | `1` | `1..20`; concurrent PUTs |
 | `--dry-run` | off | Skip PUTs; still emit JSON + CEF |
+| `--insecure` | off | Disable TLS certificate verification (`curl -k`), use only for controlled lab/testing |
 | `--pce-url <url>` | from file/env | Override PCE base URL |
 | `--org-id <id>` | from file/env | Override Org ID |
 
@@ -125,6 +132,18 @@ With environment variables baked in once:
     --non-interactive --json \
     --correlation-id "${incidentId}" \
     --reason "${ruleName}"
+```
+
+Lab-only (self-signed cert bootstrap):
+
+```bash
+./illumio-quarantine.sh \
+    --targets "${incidentSrcIpAddr}" \
+    --label-key Quarantine --label-value Severe \
+    --non-interactive --json \
+    --correlation-id "${incidentId}" \
+    --reason "${ruleName}" \
+    --insecure
 ```
 
 Without env vars (explicit paths everywhere):

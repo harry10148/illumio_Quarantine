@@ -53,3 +53,14 @@ teardown() { common_teardown; }
     [[ "$(echo "$output" | jq '.counts.matched')" == "1" ]]
     [[ "$(echo "$output" | jq -r '.matched[0].hostname')" == "web-01" ]]
 }
+
+@test "numeric-leading hostname with dash stays hostname (regression)" {
+    run bash "$SCRIPT" --targets "1-web" --label-id 878 \
+        --non-interactive --dry-run --json
+    assert_success
+    [[ "$(echo "$output" | jq -r '.search_strategy')" == "server_side" ]]
+    [[ "$(echo "$output" | jq '.counts.matched')" == "1" ]]
+    [[ "$(echo "$output" | jq -r '.matched[0].hostname')" == "1-web" ]]
+    run grep -F "workloads?hostname=1-web" "$MOCK_CURL_LOG"
+    assert_success
+}

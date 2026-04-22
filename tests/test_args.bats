@@ -11,6 +11,7 @@ teardown() { common_teardown; }
     assert_output --partial "--label-id"
     assert_output --partial "--label-key"
     assert_output --partial "--parallel"
+    assert_output --partial "--insecure"
 }
 
 @test "--version prints 1.3.1" {
@@ -89,4 +90,10 @@ teardown() { common_teardown; }
     unset ILLUMIO_QUARANTINE_API_PASS
     run bash "$SCRIPT" --targets foo --label-id 1 <<< ""
     assert_failure 6
+}
+
+@test "--insecure is accepted in non-interactive mode" {
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --non-interactive --dry-run --json --insecure
+    assert_success
 }

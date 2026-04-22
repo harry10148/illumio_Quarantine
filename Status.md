@@ -1,6 +1,6 @@
 # illumio_Quarantine — Status
 
-**Last updated:** 2026-04-21 (planning session handoff + NotebookLM validation pass)
+**Last updated:** 2026-04-22 (code review remediation complete)
 **Branch:** `main`
 **Release target:** v1.3.0 (bash, FortiSIEM Remediation Script integration)
 
@@ -16,6 +16,36 @@
 - Ready to merge + tag `v1.3.0`
 - Next: Task 13 (security hardening — world-readable creds warning)
 - Execution mode: subagent-driven, B-mode compression (small tasks spec-review-only)
+
+## 2026-04-22 code review snapshot
+
+Runtime and tests are healthy (`scripts/run_tests.sh`: 57/57 green), but review found
+four high-signal risks in `illumio-quarantine.sh`:
+
+1. Auto-discovered `./config/quarantine.conf` is `source`d before env precedence and can execute arbitrary shell commands.
+2. `resolve_target_label()` does not validate/auth-check the second `GET /labels?key=...` response in label-id flow.
+3. `classify_term()` treats numeric-leading hyphen hostnames as IP ranges (false no-match).
+4. TLS verification is globally disabled by default (`curl -k` in `CURL_OPTS`).
+
+These were reproduced locally and logged for follow-up in `Task.md`.
+
+## 2026-04-22 remediation result
+
+All four findings were fixed in `illumio-quarantine.sh` and covered by tests:
+
+1. Credentials file is parsed as key/value (no `source` execution), and auto-discovery is skipped when env creds are already present.
+2. `resolve_target_label()` now validates/auth-checks the second `GET /labels?key=...` response.
+3. Range classification now accepts only IPv4 range syntax, so `1-web` is handled as hostname.
+4. TLS verification is on by default; `-k` moved behind explicit `--insecure`.
+
+Validation: `scripts/run_tests.sh` passed (`63/63`).
+
+## 2026-04-22 docs follow-up
+
+Added explicit TLS documentation for the CR-4 change:
+
+- `README.md`: new "TLS behavior (important)" section + lab-only `--insecure` example.
+- `docs/FortiSIEM_Integration.md`: TLS verification guidance + lab-only `--insecure` script variant.
 
 The 18-task implementation plan is finalized and locked at:
 
