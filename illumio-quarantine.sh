@@ -354,7 +354,13 @@ command -v ipcalc >/dev/null 2>&1 || { echo >&2 "ERROR: required package 'ipcalc
 
 
 # --- CLI argument parsing ---
-VERSION="1.3.0"
+VERSION="1.3.1"
+
+require_arg() {
+    if [[ $# -lt 2 || "$2" == --* ]]; then
+        echo "ERROR: $1 requires a value" >&2; exit 5
+    fi
+}
 
 # Defaults
 SEARCH_TERMS_RAW=""
@@ -413,21 +419,21 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --targets)          SEARCH_TERMS_RAW="$2"; shift 2 ;;
-        --label-id)         LABEL_ID="$2";         shift 2 ;;
-        --label-key)        LABEL_KEY="$2";        shift 2 ;;
-        --label-value)      LABEL_VALUE="$2";      shift 2 ;;
-        --mode)             UPDATE_MODE="$2";      shift 2 ;;
+        --targets)          require_arg "$@"; SEARCH_TERMS_RAW="$2"; shift 2 ;;
+        --label-id)         require_arg "$@"; LABEL_ID="$2";         shift 2 ;;
+        --label-key)        require_arg "$@"; LABEL_KEY="$2";        shift 2 ;;
+        --label-value)      require_arg "$@"; LABEL_VALUE="$2";      shift 2 ;;
+        --mode)             require_arg "$@"; UPDATE_MODE="$2";      shift 2 ;;
         --non-interactive)  NON_INTERACTIVE=1;     shift ;;
         --dry-run)          DRY_RUN=1;             shift ;;
         --json)             JSON_OUT=1;            shift ;;
-        --correlation-id)   CORRELATION_ID="$2";   shift 2 ;;
-        --reason)           REASON="$2";           shift 2 ;;
-        --audit-file)       AUDIT_FILE="$2";       shift 2 ;;
-        --parallel)         PARALLEL="$2";         shift 2 ;;
-        --credentials-file) CREDENTIALS_FILE="$2"; shift 2 ;;
-        --pce-url)          CLI_PCE_URL="$2";      shift 2 ;;
-        --org-id)           CLI_ORG_ID="$2";       shift 2 ;;
+        --correlation-id)   require_arg "$@"; CORRELATION_ID="$2";   shift 2 ;;
+        --reason)           require_arg "$@"; REASON="$2";           shift 2 ;;
+        --audit-file)       require_arg "$@"; AUDIT_FILE="$2";       shift 2 ;;
+        --parallel)         require_arg "$@"; PARALLEL="$2";         shift 2 ;;
+        --credentials-file) require_arg "$@"; CREDENTIALS_FILE="$2"; shift 2 ;;
+        --pce-url)          require_arg "$@"; CLI_PCE_URL="$2";      shift 2 ;;
+        --org-id)           require_arg "$@"; CLI_ORG_ID="$2";       shift 2 ;;
         -h|--help)          print_usage; exit 0 ;;
         -V|--version)       echo "illumio-quarantine.sh $VERSION"; exit 0 ;;
         *)
@@ -436,6 +442,9 @@ while [[ $# -gt 0 ]]; do
             exit 5 ;;
     esac
 done
+
+# Non-TTY stdin → force non-interactive (prevents hanging in pipes/CI/SIEM)
+[[ ! -t 0 && "$NON_INTERACTIVE" != "1" ]] && NON_INTERACTIVE=1
 
 # Validate --parallel
 if ! [[ "$PARALLEL" =~ ^[0-9]+$ ]] || [[ "$PARALLEL" -lt 1 || "$PARALLEL" -gt 20 ]]; then

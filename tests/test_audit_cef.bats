@@ -10,7 +10,7 @@ teardown() { common_teardown; }
         --correlation-id "INC-A" --reason "bats" --audit-file "$f"
     assert_success
     run cat "$f"
-    assert_output --partial "CEF:0|Illumio|Quarantine|1.3.0|quarantine.action"
+    assert_output --partial "CEF:0|Illumio|Quarantine|1.3.1|quarantine.action"
     assert_output --partial "cs1=INC-A"
     assert_output --partial "cs3=bats"
     assert_output --partial "cs5=Quarantine"

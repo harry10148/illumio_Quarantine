@@ -13,10 +13,10 @@ teardown() { common_teardown; }
     assert_output --partial "--parallel"
 }
 
-@test "--version prints 1.3.0" {
+@test "--version prints 1.3.1" {
     run bash "$SCRIPT" --version
     assert_success
-    assert_output --partial "1.3.0"
+    assert_output --partial "1.3.1"
 }
 
 @test "non-interactive without --targets exits 5" {
@@ -71,8 +71,22 @@ teardown() { common_teardown; }
     assert_output --partial "reason=test rule"
 }
 
-@test "--json without --non-interactive exits 5" {
+@test "--json without --non-interactive succeeds in non-TTY (auto-promoted)" {
+    # In non-TTY contexts (pipes, CI, SIEM), NON_INTERACTIVE is auto-set,
+    # so --json alone is safe and succeeds.
     run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 --json
+    assert_success
+}
+
+@test "value-taking flag without value exits 5" {
+    run bash "$SCRIPT" --credentials-file --non-interactive
     assert_failure 5
-    assert_output --partial "--json requires --non-interactive"
+    assert_output --partial "requires a value"
+}
+
+@test "non-TTY stdin without creds exits 6 instead of hanging" {
+    unset ILLUMIO_QUARANTINE_API_USER
+    unset ILLUMIO_QUARANTINE_API_PASS
+    run bash "$SCRIPT" --targets foo --label-id 1 <<< ""
+    assert_failure 6
 }
