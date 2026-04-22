@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Mock curl for bats tests.
+#   MOCK_CURL_LOG           path for call log (TSV: method\turl\tdata)
+#   MOCK_CURL_FIXTURE_DIR   tests/fixtures
+#   MOCK_CURL_AUTH_FAIL     "1" → GET /workloads* returns 401 object
+#   MOCK_CURL_PUT_HTTP      override PUT HTTP code (default 204)
+#   MOCK_CURL_PUT_DELAY_MS  artificial per-PUT delay (parallel test)
+
+set -euo pipefail
+
+method="GET"; url=""; data=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -X) method="$2"; shift 2 ;;
+        -d) data="$2"; shift 2 ;;
+        -u|-H) shift 2 ;;
+        -o) shift 2 ;;
+        -w) shift 2 ;;
+        -s|-k) shift ;;
+        --*) shift ;;
+        *) url="$1"; shift ;;
+    esac
+done
+
+printf '%s\t%s\t%s\n' "$method" "$url" "$data" >> "$MOCK_CURL_LOG"
+
+# Unreachable short-circuit: simulate network failure on ANY GET
+if [[ "$method" == "GET" && "${MOCK_CURL_UNREACHABLE:-0}" == "1" ]]; then
+    exit 7
+fi
+
+# Auth-fail short-circuit: return unauthorized object on ANY GET
+if [[ "$method" == "GET" && "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
+    echo -n '{"error":"unauthorized"}'; exit 0
+fi
+
+case "$method:$url" in
+    GET:*"/labels?key="*)
+        cat "$MOCK_CURL_FIXTURE_DIR/labels_by_key.json"; exit 0 ;;
+    GET:*"/labels/"*)
+        cat "$MOCK_CURL_FIXTURE_DIR/label_by_id.json"; exit 0 ;;
+    GET:*"/workloads?"*"ip_address="*|GET:*"/workloads?"*"hostname="*)
+        q="${url#*\?}"
+        ip="$(echo "$q" | tr '&' '\n' | awk -F= '$1=="ip_address"{print $2}')"
+        hn="$(echo "$q" | tr '&' '\n' | awk -F= '$1=="hostname"{print $2}')"
+        if [[ -n "$ip" ]]; then
+            jq --arg ip "$ip" '[.[] | select(.public_ip==$ip or (.interfaces[]?.address==$ip))]' \
+                "$MOCK_CURL_FIXTURE_DIR/workloads_list.json"
+        elif [[ -n "$hn" ]]; then
+            jq --arg h "$hn" '[.[] | select(.hostname==$h)]' \
+                "$MOCK_CURL_FIXTURE_DIR/workloads_list.json"
+        else
+            echo "[]"
+        fi
+        exit 0 ;;
+    GET:*"/workloads?max_results="*|GET:*"/workloads?"*"max_results="*)
+        if [[ "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
+            echo -n '{"error":"unauthorized"}'; exit 0
+        fi
+        cat "$MOCK_CURL_FIXTURE_DIR/workloads_list.json"; exit 0 ;;
+    GET:*"/workloads")
+        if [[ "${MOCK_CURL_AUTH_FAIL:-0}" == "1" ]]; then
+            echo -n '{"error":"unauthorized"}'; exit 0
+        fi
+        cat "$MOCK_CURL_FIXTURE_DIR/workloads_list.json"; exit 0 ;;
+    GET:*"/workloads/"*)
+        cat "$MOCK_CURL_FIXTURE_DIR/single_workload.json"; exit 0 ;;
+    PUT:*)
+        [[ -n "${MOCK_CURL_PUT_DELAY_MS:-}" ]] && \
+            sleep "$(awk "BEGIN{print ${MOCK_CURL_PUT_DELAY_MS}/1000}")"
+        printf '%s' "${MOCK_CURL_PUT_HTTP:-204}"; exit 0 ;;
+    *)
+        echo "MOCK curl: unhandled $method $url" >&2; exit 1 ;;
+esac
