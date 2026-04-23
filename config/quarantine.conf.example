@@ -1,11 +1,43 @@
-# illumio_Quarantine credential file.
-# Copy to config/quarantine.conf and `chmod 600` before use.
-# Parsed as key=value when --credentials-file is given. No shell execution.
-# See README for override precedence.
+# ══════════════════════════════════════════════════════════════════
+# illumio_Quarantine — Credential File
+# ══════════════════════════════════════════════════════════════════
+#
+# [EN] Copy this file to config/quarantine.conf and run `chmod 600`
+#      before use. Parsed as key=value — no shell execution occurs.
+#      See README for the full override precedence order.
+#
+# [ZH] 將本檔案複製為 config/quarantine.conf 並執行 `chmod 600`
+#      後再使用。以 key=value 格式解析，不執行 shell 指令。
+#      完整的覆蓋優先順序請見 README。
+#
+# Override precedence / 覆蓋優先順序:
+#   CLI flag  >  ILLUMIO_QUARANTINE_* env var  >  this file  >  script default
+# ══════════════════════════════════════════════════════════════════
 
+
+# ── Required / 必填 ────────────────────────────────────────────
+#
+# [EN] PCE API user key — format: api_<hex>
+# [ZH] PCE API 使用者金鑰 — 格式: api_<hex>
 API_USER=""
+
+# [EN] PCE API secret (keep this file chmod 600)
+# [ZH] PCE API 密鑰（請確保本檔案權限為 chmod 600）
 API_PASS=""
 
-# Optional (CLI flag / env still win):
+
+# ── Optional / 選用 ────────────────────────────────────────────
+#
+# [EN] Base URL of your PCE (scheme + host + port).
+#      CLI flag --pce-url and env var ILLUMIO_QUARANTINE_PCE_URL take precedence.
+#      Example: https://pce.corp.example.com:8443
+# [ZH] PCE 的基礎 URL（含通訊協定 + 主機 + 連接埠）。
+#      CLI flag --pce-url 及 env var ILLUMIO_QUARANTINE_PCE_URL 優先。
+#      範例: https://pce.corp.example.com:8443
 # PCE_URL_BASE="https://pce.lab.local:8443"
+
+# [EN] PCE organization ID (numeric). Default 1 for single-org PCE.
+#      CLI flag --org-id and env var ILLUMIO_QUARANTINE_ORG_ID take precedence.
+# [ZH] PCE 組織 ID（數字）。單一組織的 PCE 預設為 1。
+#      CLI flag --org-id 及 env var ILLUMIO_QUARANTINE_ORG_ID 優先。
 # ORG_ID="1"

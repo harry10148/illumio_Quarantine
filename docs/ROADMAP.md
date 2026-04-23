@@ -51,3 +51,67 @@ illumio_quarantine/
 
 - Replacing Illumio PCE
 - Policy authoring (see illumio_ops)
+
+---
+
+---
+
+# 中文說明 / Chinese
+
+> **預設語言為英文。以下為繁體中文翻譯。**
+> Default language is English. The section below is a Traditional Chinese translation.
+
+---
+
+# illumio_Quarantine 發展藍圖
+
+## v1.3.0 — bash，支援 FortiSIEM（本次發布）
+
+範圍：
+- 非互動式 CLI：`--non-interactive`、`--json`、`--dry-run`
+- 透過 `--label-id` 或 `--label-key`/`--label-value` 解析目標標籤
+- Append-mode 在新增前移除現有同鍵值（same-key）的標籤（B2）
+- 當所有條件精確時，於伺服器端進行 per-term workload 查詢；有 CIDR/range/prefix 時進行一次完整掃描
+- `--parallel N` PUT pool（1..20）
+- `--correlation-id` 往返傳遞；`--reason` 稽核
+- flock 鎖定下的 CEF 稽核紀錄行
+- 退出碼 0/2/3/4/5/6
+- bats-core 測試套件
+- 外部化憑證（CLI > env > file > default）
+
+## v2.0.0 — Python，共存運行（計畫中）
+
+狀態：尚未開始。v1 仍為正式生產版本。
+
+目標：
+1. HTTP webhook `POST /webhook/v1/quarantine/apply`（bearer-token）。
+   解鎖無需 SSH 的 Splunk SOAR / QRadar SOAR 整合。
+2. 直接 SIEM 發送器：syslog UDP/TCP/TLS + Splunk HEC。
+3. 多目的地 SIEM（`config.siem.destinations[]`）。
+4. 透過 pip 安裝的 `illumio-quarantine` console script。
+5. systemd 服務範本。
+6. `quarantine/release` 反向端點。
+
+v2 非目標：
+- 取代 bash v1——兩者將並存發布。
+- GUI（委派給 `illumio_ops`）。
+
+可能的佈局（獨立於 `illumio_ops`）：
+```
+illumio_quarantine/
+├── cli.py  pce_client.py  workload_filter.py  audit.py
+│   config.py  webhook.py  server.py
+│   siem/{cef.py,json_line.py,transports.py}
+└── tests/
+```
+
+## v2.1（暫定）
+
+- Per-token 速率限制
+- N 分鐘後自動釋放，除非被保留
+- Multi-org PCE 路由
+
+## 非計畫
+
+- 取代 Illumio PCE
+- Policy authoring（請見 `illumio_ops`）
