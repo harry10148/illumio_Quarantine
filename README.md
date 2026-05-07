@@ -30,9 +30,12 @@ chmod 600 config/quarantine.conf
 
 The script auto-discovers a credentials file in this search order when
 `--credentials-file` is not given:
-1. `./config/quarantine.conf` (repo-local)
-2. `$HOME/.config/illumio_quarantine/quarantine.conf`
-3. `/etc/illumio_quarantine/quarantine.conf`
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+> **Note:** CWD-relative `./config/quarantine.conf` auto-discovery was removed
+> for security (to prevent PCE redirect attacks via compromised repo copies).
+> Use `--credentials-file ./config/quarantine.conf` to explicitly load it.
 
 ### Path 2: environment variables (recommended for SIEM/SOAR automation)
 
@@ -103,7 +106,7 @@ Env vars override the credentials file. CLI flags override env vars.
 
 ```bash
 ./illumio-quarantine.sh
-# Uses ./config/quarantine.conf auto-discovery. Prompts for targets, label, mode, confirmation.
+# Uses auto-discovered credentials file. Prompts for targets, label, mode, confirmation.
 ```
 
 ## Quick start — minimum non-interactive
@@ -250,9 +253,12 @@ chmod 600 config/quarantine.conf
 ```
 
 當未提供 `--credentials-file` 時，腳本會依照以下搜尋順序自動發掘 credentials file：
-1. `./config/quarantine.conf`（repo 本地）
-2. `$HOME/.config/illumio_quarantine/quarantine.conf`
-3. `/etc/illumio_quarantine/quarantine.conf`
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+> **注意：** CWD 相對路徑的 `./config/quarantine.conf` 自動發掘已移除，
+> 以防止安全問題（防止 PCE 透過受危的 repo 複本進行重定向攻擊）。
+> 若要明確載入它，請使用 `--credentials-file ./config/quarantine.conf`。
 
 ### 途徑 2：環境變數（推薦用於 SIEM/SOAR 自動化）
 
@@ -322,7 +328,7 @@ Env vars 覆蓋 credentials file。CLI flags 覆蓋 env vars。
 
 ```bash
 ./illumio-quarantine.sh
-# 自動發掘 ./config/quarantine.conf。提示輸入 targets、label、mode 與確認。
+# 使用自動發掘的 credentials file。提示輸入 targets、label、mode 與確認。
 ```
 
 ## 快速開始 — 最小化非互動模式

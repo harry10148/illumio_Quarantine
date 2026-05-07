@@ -64,9 +64,11 @@ chmod 600 config/quarantine.conf
 # edit API_USER / API_PASS / PCE_URL_BASE / ORG_ID
 ```
 
-The script auto-discovers `./config/quarantine.conf`, then
-`$HOME/.config/illumio_quarantine/quarantine.conf`, then
-`/etc/illumio_quarantine/quarantine.conf`.
+The script auto-discovers credentials files in this search order:
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+To explicitly load a repo-local file, use `--credentials-file ./config/quarantine.conf`.
 
 ### Local smoke
 
@@ -349,9 +351,11 @@ chmod 600 config/quarantine.conf
 # 編輯 API_USER / API_PASS / PCE_URL_BASE / ORG_ID
 ```
 
-腳本會自動發掘 `./config/quarantine.conf`，接著是
-`$HOME/.config/illumio_quarantine/quarantine.conf`，然後是
-`/etc/illumio_quarantine/quarantine.conf`。
+腳本會依照以下順序自動發掘 credentials file：
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+若要明確載入 repo 本地檔案，請使用 `--credentials-file ./config/quarantine.conf`。
 
 ### 本機 smoke 測試
 
