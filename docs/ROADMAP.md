@@ -1,6 +1,6 @@
 # illumio_Quarantine Roadmap
 
-## v1.3.0 — bash, FortiSIEM-ready (this release)
+## v1.3.1 — bash, FortiSIEM-ready (this release)
 
 Scope:
 - Non-interactive CLI: `--non-interactive`, `--json`, `--dry-run`
@@ -65,7 +65,7 @@ illumio_quarantine/
 
 # illumio_Quarantine 發展藍圖
 
-## v1.3.0 — bash，支援 FortiSIEM（本次發布）
+## v1.3.1 — bash，支援 FortiSIEM（本次發布）
 
 範圍：
 - 非互動式 CLI：`--non-interactive`、`--json`、`--dry-run`

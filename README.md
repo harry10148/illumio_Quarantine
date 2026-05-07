@@ -3,7 +3,7 @@
 Auto-quarantine Illumio PCE workloads by label. Callable interactively by an
 operator or non-interactively by a SIEM/SOAR playbook (FortiSIEM primary).
 
-**Current release: v1.3.0** (bash).
+**Current release: v1.3.1** (bash).
 
 > Future v2 (Python + HTTP webhook) is planned — see `docs/ROADMAP.md`.
 
@@ -224,7 +224,7 @@ scripts/run_tests.sh tests/test_args.bats
 透過標籤自動隔離 Illumio PCE workloads。可由操作人員互動式呼叫，或透過 SIEM/SOAR
 playbook（主要為 FortiSIEM）非互動式呼叫。
 
-**目前版本：v1.3.0**（bash）。
+**目前版本：v1.3.1**（bash）。
 
 > 計畫推出未來的 v2（Python + HTTP webhook）— 請參閱 `docs/ROADMAP.md`。
 

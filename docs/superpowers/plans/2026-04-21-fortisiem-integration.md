@@ -66,7 +66,7 @@
 
 | Path | Change summary |
 |---|---|
-| `update_illumio_workload_labels.sh` | Major refactor: arg parser, modes, exit codes, label resolver, server-side search dispatcher, same-key strip, parallel put pool, CEF audit, all strings English; version 1.3.0; **remove hardcoded creds** |
+| `update_illumio_workload_labels.sh` | Major refactor: arg parser, modes, exit codes, label resolver, server-side search dispatcher, same-key strip, parallel put pool, CEF audit, all strings English; version 1.3.1; **remove hardcoded creds** |
 | `README.md` | Rewrite: usage (interactive + SIEM modes), FortiSIEM link, roadmap link, English only |
 
 ### Untouched
@@ -147,7 +147,7 @@ Override precedence (decision G):
 ## CEF Audit Line (stable)
 
 ```
-CEF:0|Illumio|Quarantine|1.3.0|quarantine.action|Illumio Quarantine Action|5|rt=<epoch_ms> dvchost=<pce_host> act=<append|overwrite> outcome=<success|partial|failure|no_match> cs1Label=correlation_id cs1=<id> cs2Label=audit_id cs2=<id> cs3Label=reason cs3=<escaped_reason> cs4Label=targets cs4=<escaped_csv> cs5Label=label_key cs5=<key> cs6Label=label_value cs6=<value> cn1Label=updated_count cn1=<n> cn2Label=failed_count cn2=<n> cs7Label=dry_run cs7=<true|false>
+CEF:0|Illumio|Quarantine|1.3.1|quarantine.action|Illumio Quarantine Action|5|rt=<epoch_ms> dvchost=<pce_host> act=<append|overwrite> outcome=<success|partial|failure|no_match> cs1Label=correlation_id cs1=<id> cs2Label=audit_id cs2=<id> cs3Label=reason cs3=<escaped_reason> cs4Label=targets cs4=<escaped_csv> cs5Label=label_key cs5=<key> cs6Label=label_value cs6=<value> cn1Label=updated_count cn1=<n> cn2Label=failed_count cn2=<n> cs7Label=dry_run cs7=<true|false>
 ```
 
 Escape in `cef_escape`: `\` → `\\`, `|` → `\|`, `=` → `\=`, newline → `\n`.
@@ -544,7 +544,7 @@ load_credentials() {
 }
 ```
 
-Bump version comment `1.2.1` → `1.3.0`. Replace the old Chinese "硬編碼憑證" security warning text with:
+Bump version comment `1.2.1` → `1.3.1`. Replace the old Chinese "硬編碼憑證" security warning text with:
 ```bash
 # !!! SECURITY NOTES !!!
 # PCE API credentials loaded by load_credentials() in this order:
@@ -595,10 +595,10 @@ teardown() { common_teardown; }
     assert_output --partial "--parallel"
 }
 
-@test "--version prints 1.3.0" {
+@test "--version prints 1.3.1" {
     run bash "$SCRIPT" --version
     assert_success
-    assert_output --partial "1.3.0"
+    assert_output --partial "1.3.1"
 }
 
 @test "non-interactive without --targets exits 5" {
@@ -646,7 +646,7 @@ In `update_illumio_workload_labels.sh`, after the dep checks (after line 87 in v
 
 ```bash
 # --- CLI argument parsing ---
-VERSION="1.3.0"
+VERSION="1.3.1"
 
 # Defaults
 SEARCH_TERMS_RAW=""
@@ -1727,7 +1727,7 @@ teardown() { common_teardown; }
         --correlation-id "INC-A" --reason "bats" --audit-file "$f"
     assert_success
     run cat "$f"
-    assert_output --partial "CEF:0|Illumio|Quarantine|1.3.0|quarantine.action"
+    assert_output --partial "CEF:0|Illumio|Quarantine|1.3.1|quarantine.action"
     assert_output --partial "cs1=INC-A"
     assert_output --partial "cs3=bats"
     assert_output --partial "cs5=Quarantine"
@@ -1963,10 +1963,10 @@ git commit -m "i18n: sweep all user-facing strings to English (decision H)"
 ```markdown
 # FortiSIEM — Illumio Quarantine Integration
 
-Wires `update_illumio_workload_labels.sh` v1.3.0 into FortiSIEM so that when
+Wires `update_illumio_workload_labels.sh` v1.3.1 into FortiSIEM so that when
 an incident fires, a workload is auto-quarantined by label.
 
-Shapes supported in v1.3.0:
+Shapes supported in v1.3.1:
 
 | Shape | Recommended? |
 |---|---|
@@ -2033,7 +2033,7 @@ Variable expansion at fire time:
 Have the FortiSIEM Linux agent tail `/var/log/illumio_quarantine.cef` and
 forward as CEF. Parser mapping:
 ```
-Vendor=Illumio  Product=Quarantine  Version=1.3.0
+Vendor=Illumio  Product=Quarantine  Version=1.3.1
 EventId=quarantine.action  Severity=5
 cs1→correlationId, cs2→auditId, cs3→reason, cs4→targets,
 cs5→labelKey,      cs6→labelValue, cs7→dryRun,
@@ -2090,7 +2090,7 @@ git commit -m "docs: FortiSIEM SSH Remediation Script integration guide"
 ```markdown
 # illumio_Quarantine Roadmap
 
-## v1.3.0 — bash, FortiSIEM-ready (this release)
+## v1.3.1 — bash, FortiSIEM-ready (this release)
 
 Scope:
 - Non-interactive CLI: `--non-interactive`, `--json`, `--dry-run`
@@ -2165,7 +2165,7 @@ git commit -m "docs: v2 Python roadmap"
 Auto-quarantine Illumio PCE workloads by label. Callable interactively by an
 operator or non-interactively by a SIEM/SOAR playbook.
 
-**Current release: v1.3.0** (bash).
+**Current release: v1.3.1** (bash).
 
 > Future v2 (Python + HTTP webhook) is planned — see `docs/ROADMAP.md`.
 
