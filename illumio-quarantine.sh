@@ -7,7 +7,7 @@
 #           添加/設置指定的 Label。
 # 作者:     Harry
 # 日期:     20250419
-# 版本:     1.3.0
+# 版本:     1.3.1
 #
 # 依賴套件:
 #   - curl:   用於發送 HTTP API 請求。
@@ -34,6 +34,7 @@ API_USER=""
 API_PASS=""
 PCE_URL_BASE=""
 ORG_ID=""
+CURL_AUTH_FILE=""
 
 # --- 輔助函數 ---
 
@@ -160,7 +161,6 @@ load_credentials() {
     # Auto-discover a credentials file if --credentials-file was not given
     if [[ -z "${CREDENTIALS_FILE:-}" && "$env_has_creds" != "1" ]]; then
         for p in \
-            "./config/quarantine.conf" \
             "${HOME}/.config/illumio_quarantine/quarantine.conf" \
             "/etc/illumio_quarantine/quarantine.conf"
         do
@@ -213,6 +213,35 @@ load_credentials() {
     [[ -z "$API_USER" || -z "$API_PASS" ]] && exit 6
 }
 
+# Write API_USER/API_PASS into a 0600 temp file and set up cleanup, so the
+# credentials are passed to curl via `-K $CURL_AUTH_FILE` and never appear in
+# /proc/<pid>/cmdline (where any local user could read them).
+# Trap is installed BEFORE the file is populated so an immediate signal still
+# triggers cleanup.
+init_curl_auth_file() {
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+    CURL_AUTH_FILE=$(mktemp "${TMPDIR:-/tmp}/iq_curlauth_XXXXXX") || {
+        umask "$old_umask"
+        echo "ERROR: failed to create curl auth temp file" >&2
+        exit 1
+    }
+    umask "$old_umask"
+    # Defensive chmod in case mktemp ignored umask on some platform.
+    chmod 600 "$CURL_AUTH_FILE" 2>/dev/null || true
+    trap 'rm -f "$CURL_AUTH_FILE"' EXIT
+    trap 'rm -f "$CURL_AUTH_FILE"; trap - INT TERM; kill -INT $$' INT
+    trap 'rm -f "$CURL_AUTH_FILE"; trap - INT TERM; kill -TERM $$' TERM
+    # curl -K config: `user = "user:pass"` with embedded quotes in the value
+    # must be backslash-escaped per curl(1).
+    local esc_user="${API_USER//\\/\\\\}"
+    esc_user="${esc_user//\"/\\\"}"
+    local esc_pass="${API_PASS//\\/\\\\}"
+    esc_pass="${esc_pass//\"/\\\"}"
+    printf 'user = "%s:%s"\n' "$esc_user" "$esc_pass" > "$CURL_AUTH_FILE"
+}
+
 # Target label state — resolved by resolve_target_label()
 TARGET_LABEL_HREF=""
 TARGET_LABEL_KEY=""
@@ -223,14 +252,18 @@ _urlenc() {
     printf '%s' "$1" | jq -sRr @uri
 }
 
-# @description Escape a value per ArcSight CEF (backslash, pipe, equals, CR, LF).
+# @description Escape a value per ArcSight CEF (backslash, pipe, equals, CR, LF, space).
+# Also strips control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F) via tr.
 cef_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
+    s="${s// /\\ }"
     s="${s//|/\\|}"
     s="${s//=/\\=}"
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
+    # Remove control characters: keep only printable ASCII, space, tab, newline
+    s=$(printf '%s' "$s" | tr -cd '[:print:]\t\n ')
     printf '%s' "$s"
 }
 
@@ -252,6 +285,16 @@ emit_cef() {
     local updated_ct="${#J_UPDATED[@]}"
     local failed_ct="${#J_FAILED[@]}"
 
+    # Reject symlinks on $AUDIT_FILE and ${AUDIT_FILE}.lock to prevent symlink-redirection attacks
+    if [[ -L "$AUDIT_FILE" ]]; then
+        echo "WARNING: refusing to write audit: $AUDIT_FILE is a symbolic link" >&2
+        return 1
+    fi
+    if [[ -L "${AUDIT_FILE}.lock" ]]; then
+        echo "WARNING: refusing to use audit lock: ${AUDIT_FILE}.lock is a symbolic link" >&2
+        return 1
+    fi
+
     local line
     line=$(printf 'CEF:0|Illumio|Quarantine|%s|quarantine.action|Illumio Quarantine Action|5|rt=%s dvchost=%s act=%s outcome=%s cs1Label=correlation_id cs1=%s cs2Label=audit_id cs2=%s cs3Label=reason cs3=%s cs4Label=targets cs4=%s cs5Label=label_key cs5=%s cs6Label=label_value cs6=%s cn1Label=updated_count cn1=%d cn2Label=failed_count cn2=%d cs7Label=dry_run cs7=%s' \
         "$VERSION" "$epoch_ms" "$pce_host" "${UPDATE_MODE:-}" "$outcome" \
@@ -272,7 +315,7 @@ resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
         local resp curl_ec
-        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
         curl_ec=$?
@@ -294,7 +337,7 @@ resolve_target_label() {
     else
         local resp enc_key curl_ec
         enc_key=$(_urlenc "$LABEL_KEY")
-        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
         curl_ec=$?
@@ -319,7 +362,7 @@ resolve_target_label() {
     # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
     local same_resp enc_target_key curl_ec
     enc_target_key=$(_urlenc "$TARGET_LABEL_KEY")
-    same_resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+    same_resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                     -H 'Accept: application/json' \
                     "${base}/labels?key=${enc_target_key}")
     curl_ec=$?
@@ -394,7 +437,7 @@ put_one_workload() {
         http_code="000"; curl_ec=0
     else
         http_code=$(curl ${CURL_OPTS} -X PUT \
-            -u "${API_USER}:${API_PASS}" \
+            -K "$CURL_AUTH_FILE" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
             -d "$put_body" -o /dev/null -w "%{http_code}" \
@@ -561,6 +604,7 @@ if [[ "$JSON_OUT" == "1" && "$NON_INTERACTIVE" != "1" ]]; then
 fi
 
 load_credentials
+init_curl_auth_file
 
 
 # Interactive prompts (skipped if --non-interactive)
@@ -637,7 +681,7 @@ done
 
 if [[ "$needs_full" == "1" ]]; then
     SEARCH_STRATEGY="full_scan"
-    api_response=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+    api_response=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
         -H 'Accept: application/json' \
         "${WORKLOADS_BASE}?max_results=100000")
 else
@@ -648,11 +692,11 @@ else
         t=$(classify_term "$term")
         enc_term=$(_urlenc "$term")
         if [[ "$t" == "ip" ]]; then
-            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?ip_address=${enc_term}")
         else
-            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?hostname=${enc_term}")
         fi
@@ -918,6 +962,23 @@ DURATION_MS=$((RUN_END_MS - RUN_START_MS))
 ec=0
 if   [[ ${#J_MATCHED[@]} -eq 0 ]]; then ec=3
 elif [[ ${#J_FAILED[@]}  -gt 0 ]]; then ec=2
+fi
+
+# Promote partial → auth-failure exit 4 when EVERY PUT failed with 401/403.
+if [[ $ec -eq 2 ]]; then
+    auth_only=1
+    for entry in "${J_FAILED[@]}"; do
+        h=$(jq -r '.http // 0' <<<"$entry")
+        if [[ "$h" != "401" && "$h" != "403" ]]; then
+            auth_only=0
+            break
+        fi
+    done
+    # Also require there were no successes (J_UPDATED empty); otherwise it's
+    # genuinely partial.
+    if [[ "$auth_only" == "1" && ${#J_UPDATED[@]} -eq 0 && ${#J_SKIPPED[@]} -eq 0 ]]; then
+        ec=4
+    fi
 fi
 
 _arr() { local IFS=','; echo "[${*}]"; }

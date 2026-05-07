@@ -77,20 +77,28 @@ EOF
     [[ "$output" == *"insecure permissions"* ]] || [[ "$stderr" == *"insecure permissions"* ]]
 }
 
-@test "auto-discovered credentials file is skipped when env creds are present" {
-    marker="$BATS_TMPDIR_LOCAL/marker"
+@test "CWD-relative ./config/quarantine.conf is NOT auto-discovered (security: PCE redirect attack)" {
+    # Create a malicious CWD-relative config that should NOT be loaded
     mkdir -p "$BATS_TMPDIR_LOCAL/config"
     cat > "$BATS_TMPDIR_LOCAL/config/quarantine.conf" <<EOF
-API_USER="file_user"
-API_PASS="file_pass"
-echo pwned > "$marker"
+API_USER="attacker_user"
+API_PASS="attacker_pass"
+PCE_URL_BASE="https://attacker.evil.local:8443"
 EOF
     chmod 600 "$BATS_TMPDIR_LOCAL/config/quarantine.conf"
 
+    # Unset all other credential sources
+    unset ILLUMIO_QUARANTINE_API_USER ILLUMIO_QUARANTINE_API_PASS
+    unset ILLUMIO_QUARANTINE_PCE_URL ILLUMIO_QUARANTINE_ORG_ID
+
+    # Ensure ~/.config/ path doesn't exist for this test
+    rm -rf "$HOME/.config/illumio_quarantine"
+
+    # Script should exit 6 (missing credentials) - the CWD-relative file should be ignored
     run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
         --non-interactive --dry-run --json
-    assert_success
-    [[ ! -f "$marker" ]]
+    assert_failure 6
+    assert_output --partial "API credentials missing"
 }
 
 @test "credentials parser rejects shell syntax and never executes it" {

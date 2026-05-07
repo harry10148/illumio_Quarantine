@@ -15,11 +15,20 @@ teardown() { common_teardown; }
     [[ "$status" -eq 3 ]]
 }
 
-@test "exit 2 on partial failure (PUT returns 403)" {
-    export MOCK_CURL_PUT_HTTP="403"
+@test "exit 4 when every PUT fails with 401 (auth failure)" {
+    export MOCK_CURL_PUT_HTTP="401"
     run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
         --mode append --non-interactive --json
-    [[ "$status" -eq 2 ]]
+    [[ "$status" -eq 4 ]]
+}
+
+@test "exit 4 when every PUT fails with 403 (auth failure)" {
+    export MOCK_CURL_PUT_HTTP="403"
+    # Ensure we match workloads and reach PUT phase
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --mode append --non-interactive --json
+    # This test verifies the new override: all PUTs returned 403 → exit 4
+    [[ "$status" -eq 4 ]]
 }
 
 @test "exit 4 on PCE auth failure" {
@@ -52,4 +61,14 @@ teardown() { common_teardown; }
 @test "TLS verification is enabled by default (no global -k in CURL_OPTS)" {
     run grep -n 'CURL_OPTS="-s --connect-timeout 10 --max-time 30"' "$SCRIPT"
     assert_success
+}
+
+@test "exit 2 on partial failure (first PUT fails, rest succeed)" {
+    # Reset the mock curl PUT count file for this test
+    rm -f "${BATS_TMPDIR_LOCAL:-/tmp}/mock_curl_put_count"
+    export MOCK_CURL_PUT_HTTP_FIRST_FAIL="1"
+    run bash "$SCRIPT" --targets "10.0.0.5,10.0.0.6" --label-id 878 \
+        --mode append --non-interactive --json
+    # First PUT returns 403, second returns 204 → genuinely partial → exit 2
+    [[ "$status" -eq 2 ]]
 }

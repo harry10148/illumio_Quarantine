@@ -1,6 +1,6 @@
 # illumio_Quarantine Roadmap
 
-## v1.3.0 — bash, FortiSIEM-ready (this release)
+## v1.3.1 — bash, FortiSIEM-ready (this release)
 
 Scope:
 - Non-interactive CLI: `--non-interactive`, `--json`, `--dry-run`
@@ -14,6 +14,15 @@ Scope:
 - Exit codes 0/2/3/4/5/6
 - bats-core test suite
 - Externalized credentials (CLI > env > file > default)
+
+### Security hardening (post-initial 1.3.1)
+
+- Curl credentials moved off command line via `-K` config file (no `/proc/*/cmdline` exposure)
+- CEF extension values: spaces escaped to prevent audit log forgery
+- Audit file and lock refuse symbolic links (atomic creation + stat)
+- Credentials auto-discovery no longer searches CWD-relative `~/.illumio_quarantine`
+- Exit code 4 (auth failure) when all workload PUTs fail with 401/403 (was exit 2)
+- Documentation and version strings sync to 1.3.1 across README, FortiSIEM Integration guide, and CEF parser map
 
 ## v2.0.0 — Python, coexisting (planned)
 
@@ -65,7 +74,7 @@ illumio_quarantine/
 
 # illumio_Quarantine 發展藍圖
 
-## v1.3.0 — bash，支援 FortiSIEM（本次發布）
+## v1.3.1 — bash，支援 FortiSIEM（本次發布）
 
 範圍：
 - 非互動式 CLI：`--non-interactive`、`--json`、`--dry-run`
@@ -78,6 +87,15 @@ illumio_quarantine/
 - 退出碼 0/2/3/4/5/6
 - bats-core 測試套件
 - 外部化憑證（CLI > env > file > default）
+
+### 安全強化（1.3.1 後期）
+
+- Curl 憑證透過 `-K` 設定檔移出命令列（不會暴露於 `/proc/*/cmdline`）
+- CEF 擴展值：空格轉義以防止稽核日誌偽造
+- 稽核檔案及鎖檔拒絕符號連結（原子建立 + stat）
+- 憑證自動探測不再搜尋 CWD 相對路徑 `~/.illumio_quarantine`
+- 當所有工作負載 PUT 請求都以 401/403 失敗時，返回退出碼 4（認證失敗）（原為退出碼 2）
+- 文件與版本字符串在 README、FortiSIEM 整合指南及 CEF 解析器對應表中同步為 1.3.1
 
 ## v2.0.0 — Python，共存運行（計畫中）
 

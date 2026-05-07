@@ -1,6 +1,6 @@
 # FortiSIEM — Illumio Quarantine Integration
 
-Wires `illumio-quarantine.sh` v1.3.0 into FortiSIEM 7.5 so that
+Wires `illumio-quarantine.sh` v1.3.1 into FortiSIEM 7.5 so that
 when an incident fires, the matching Illumio PCE workload is auto-quarantined
 by label.
 
@@ -16,7 +16,7 @@ by label.
 > `$incidentId`, `$ruleName`. Use ad-hoc "Remediate Incident" first, then
 > switch to Automation Policy once token expansion is confirmed.
 
-Shapes supported in v1.3.0:
+Shapes supported in v1.3.1:
 
 | Shape | Recommended? |
 |---|---|
@@ -64,9 +64,11 @@ chmod 600 config/quarantine.conf
 # edit API_USER / API_PASS / PCE_URL_BASE / ORG_ID
 ```
 
-The script auto-discovers `./config/quarantine.conf`, then
-`$HOME/.config/illumio_quarantine/quarantine.conf`, then
-`/etc/illumio_quarantine/quarantine.conf`.
+The script auto-discovers credentials files in this search order:
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+To explicitly load a repo-local file, use `--credentials-file ./config/quarantine.conf`.
 
 ### Local smoke
 
@@ -227,7 +229,7 @@ Have FortiSIEM's Linux collector agent tail `/var/log/illumio_quarantine.cef`
 and forward as CEF. Parser mapping:
 
 ```
-Vendor=Illumio  Product=Quarantine  Version=1.3.0
+Vendor=Illumio  Product=Quarantine  Version=1.3.1
 EventId=quarantine.action  Severity=5
 cs1 → correlationId   cs2 → auditId       cs3 → reason
 cs4 → targets         cs5 → labelKey      cs6 → labelValue
@@ -291,7 +293,7 @@ application. Verify in the Illumio PCE GUI that the workload gains the
 
 # FortiSIEM — Illumio Quarantine 整合
 
-將 `illumio-quarantine.sh` v1.3.0 串接至 FortiSIEM 7.5 中，以便當 incident 觸發時，
+將 `illumio-quarantine.sh` v1.3.1 串接至 FortiSIEM 7.5 中，以便當 incident 觸發時，
 相符的 Illumio PCE workload 會透過標籤自動隔離。
 
 > **相容性注意事項。** FortiSIEM 7.5 的原廠文件並未明確說明 `$token` 替換是否適用於
@@ -303,7 +305,7 @@ application. Verify in the Illumio PCE GUI that the workload gains the
 > `$srcIpAddr`、`$incidentSrc`、`$incidentTarget`、`$incidentId`、`$ruleName`。
 > 請先使用特設的「Remediate Incident」，待確認 token 可成功展開後再切換至 Automation Policy。
 
-v1.3.0 支援的整合形式：
+v1.3.1 支援的整合形式：
 
 | 形式 | 是否推薦 |
 |---|---|
@@ -349,9 +351,11 @@ chmod 600 config/quarantine.conf
 # 編輯 API_USER / API_PASS / PCE_URL_BASE / ORG_ID
 ```
 
-腳本會自動發掘 `./config/quarantine.conf`，接著是
-`$HOME/.config/illumio_quarantine/quarantine.conf`，然後是
-`/etc/illumio_quarantine/quarantine.conf`。
+腳本會依照以下順序自動發掘 credentials file：
+1. `$HOME/.config/illumio_quarantine/quarantine.conf`
+2. `/etc/illumio_quarantine/quarantine.conf`
+
+若要明確載入 repo 本地檔案，請使用 `--credentials-file ./config/quarantine.conf`。
 
 ### 本機 smoke 測試
 
@@ -507,7 +511,7 @@ fortisiem-remediator ALL=(root) NOPASSWD: /opt/illumio_Quarantine/illumio-quaran
 並以 CEF 格式轉發。Parser 映射：
 
 ```
-Vendor=Illumio  Product=Quarantine  Version=1.3.0
+Vendor=Illumio  Product=Quarantine  Version=1.3.1
 EventId=quarantine.action  Severity=5
 cs1 → correlationId   cs2 → auditId       cs3 → reason
 cs4 → targets         cs5 → labelKey      cs6 → labelValue
