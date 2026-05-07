@@ -1,0 +1,4 @@
+#!/bin/sh
+# Existence stub for command -v ipcalc at script startup.
+# Test paths that exercise CIDR math should mock this differently.
+exit 0

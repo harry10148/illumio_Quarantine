@@ -55,3 +55,16 @@ teardown() { common_teardown; }
         --mode append --non-interactive --dry-run --json
     assert_success
 }
+
+@test "space escaping prevents CEF injection via correlation-id" {
+    local f="$BATS_TMPDIR_LOCAL/a.cef"
+    run bash "$SCRIPT" --targets "10.0.0.5" --label-id 878 \
+        --mode append --non-interactive --dry-run --json \
+        --correlation-id "INC1 outcome=fake" --audit-file "$f"
+    assert_success
+    run cat "$f"
+    # Verify space is escaped (INC1\ outcome\=fake) and no unescaped outcome=fake token
+    assert_output --partial 'cs1=INC1\ outcome\=fake'
+    # Ensure the injection attempt (unescaped "outcome=fake") is NOT present as a separate field
+    refute_output --regexp 'outcome=fake[^\\]'
+}

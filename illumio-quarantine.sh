@@ -252,14 +252,18 @@ _urlenc() {
     printf '%s' "$1" | jq -sRr @uri
 }
 
-# @description Escape a value per ArcSight CEF (backslash, pipe, equals, CR, LF).
+# @description Escape a value per ArcSight CEF (backslash, pipe, equals, CR, LF, space).
+# Also strips control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F) via tr.
 cef_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
+    s="${s// /\\ }"
     s="${s//|/\\|}"
     s="${s//=/\\=}"
     s="${s//$'\n'/\\n}"
     s="${s//$'\r'/\\r}"
+    # Remove control characters: keep only printable ASCII, space, tab, newline
+    s=$(printf '%s' "$s" | tr -cd '[:print:]\t\n ')
     printf '%s' "$s"
 }
 
