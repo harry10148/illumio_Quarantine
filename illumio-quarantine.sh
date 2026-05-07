@@ -160,7 +160,6 @@ load_credentials() {
     # Auto-discover a credentials file if --credentials-file was not given
     if [[ -z "${CREDENTIALS_FILE:-}" && "$env_has_creds" != "1" ]]; then
         for p in \
-            "./config/quarantine.conf" \
             "${HOME}/.config/illumio_quarantine/quarantine.conf" \
             "/etc/illumio_quarantine/quarantine.conf"
         do
