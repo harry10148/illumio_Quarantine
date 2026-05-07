@@ -963,6 +963,23 @@ if   [[ ${#J_MATCHED[@]} -eq 0 ]]; then ec=3
 elif [[ ${#J_FAILED[@]}  -gt 0 ]]; then ec=2
 fi
 
+# Promote partial → auth-failure exit 4 when EVERY PUT failed with 401/403.
+if [[ $ec -eq 2 ]]; then
+    auth_only=1
+    for entry in "${J_FAILED[@]}"; do
+        h=$(jq -r '.http // 0' <<<"$entry")
+        if [[ "$h" != "401" && "$h" != "403" ]]; then
+            auth_only=0
+            break
+        fi
+    done
+    # Also require there were no successes (J_UPDATED empty); otherwise it's
+    # genuinely partial.
+    if [[ "$auth_only" == "1" && ${#J_UPDATED[@]} -eq 0 && ${#J_SKIPPED[@]} -eq 0 ]]; then
+        ec=4
+    fi
+fi
+
 _arr() { local IFS=','; echo "[${*}]"; }
 
 if [[ "$JSON_OUT" == "1" ]]; then
