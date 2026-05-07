@@ -1,4 +1,48 @@
-#!/bin/sh
-# Existence stub for command -v ipcalc at script startup.
-# Test paths that exercise CIDR math should mock this differently.
+#!/bin/bash
+# Mock ipcalc that handles -n CIDR to compute network address for tests.
+# Syntax: ipcalc -n IP/PREFIX
+
+# For non-'-n' invocations, just exit success (stub behavior)
+if [[ "$1" != "-n" ]] || [[ $# -lt 2 ]]; then
+    exit 0
+fi
+
+cidr="$2"
+
+# Parse IP and prefix
+IFS='/' read -r ip prefix <<< "$cidr"
+
+# Validate IPv4 format (basic check)
+if ! [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    exit 1
+fi
+
+if ! [[ "$prefix" =~ ^[0-9]+$ ]] || (( prefix < 0 || prefix > 32 )); then
+    exit 1
+fi
+
+# Convert IP to 32-bit integer
+IFS='.' read -r a b c d <<< "$ip"
+ip_int=$(( (a << 24) + (b << 16) + (c << 8) + d ))
+
+# Compute network address: mask by creating a bitmask of 1s for the prefix bits
+# Then AND with the IP
+if (( prefix == 0 )); then
+    mask=0
+else
+    mask=$(( (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF ))
+fi
+net_int=$(( ip_int & mask ))
+
+# Convert back to dotted-quad notation
+net_a=$(( (net_int >> 24) & 0xFF ))
+net_b=$(( (net_int >> 16) & 0xFF ))
+net_c=$(( (net_int >> 8) & 0xFF ))
+net_d=$(( net_int & 0xFF ))
+
+network="${net_a}.${net_b}.${net_c}.${net_d}"
+
+# Output in a format that matches what the script expects:
+# grep -E '^(Network:|NETWORK=)' then sed to extract the network part
+echo "Network:       ${network}/${prefix}"
 exit 0

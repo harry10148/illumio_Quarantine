@@ -34,6 +34,7 @@ API_USER=""
 API_PASS=""
 PCE_URL_BASE=""
 ORG_ID=""
+CURL_AUTH_FILE=""
 
 # --- 輔助函數 ---
 
