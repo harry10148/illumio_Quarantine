@@ -15,6 +15,7 @@ while [[ $# -gt 0 ]]; do
         -X) method="$2"; shift 2 ;;
         -d) data="$2"; shift 2 ;;
         -u|-H) shift 2 ;;
+        -K) shift 2 ;;
         -o) shift 2 ;;
         -w) shift 2 ;;
         -s|-k) shift ;;

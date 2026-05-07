@@ -213,6 +213,35 @@ load_credentials() {
     [[ -z "$API_USER" || -z "$API_PASS" ]] && exit 6
 }
 
+# Write API_USER/API_PASS into a 0600 temp file and set up cleanup, so the
+# credentials are passed to curl via `-K $CURL_AUTH_FILE` and never appear in
+# /proc/<pid>/cmdline (where any local user could read them).
+# Trap is installed BEFORE the file is populated so an immediate signal still
+# triggers cleanup.
+init_curl_auth_file() {
+    local old_umask
+    old_umask=$(umask)
+    umask 077
+    CURL_AUTH_FILE=$(mktemp "${TMPDIR:-/tmp}/iq_curlauth_XXXXXX") || {
+        umask "$old_umask"
+        echo "ERROR: failed to create curl auth temp file" >&2
+        exit 1
+    }
+    umask "$old_umask"
+    # Defensive chmod in case mktemp ignored umask on some platform.
+    chmod 600 "$CURL_AUTH_FILE" 2>/dev/null || true
+    trap 'rm -f "$CURL_AUTH_FILE"' EXIT
+    trap 'rm -f "$CURL_AUTH_FILE"; trap - INT TERM; kill -INT $$' INT
+    trap 'rm -f "$CURL_AUTH_FILE"; trap - INT TERM; kill -TERM $$' TERM
+    # curl -K config: `user = "user:pass"` with embedded quotes in the value
+    # must be backslash-escaped per curl(1).
+    local esc_user="${API_USER//\\/\\\\}"
+    esc_user="${esc_user//\"/\\\"}"
+    local esc_pass="${API_PASS//\\/\\\\}"
+    esc_pass="${esc_pass//\"/\\\"}"
+    printf 'user = "%s:%s"\n' "$esc_user" "$esc_pass" > "$CURL_AUTH_FILE"
+}
+
 # Target label state — resolved by resolve_target_label()
 TARGET_LABEL_HREF=""
 TARGET_LABEL_KEY=""
@@ -272,7 +301,7 @@ resolve_target_label() {
     local base="${PCE_URL_BASE}/api/${API_VERSION}/orgs/${ORG_ID}"
     if [[ -n "$LABEL_ID" ]]; then
         local resp curl_ec
-        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                    -H 'Accept: application/json' \
                    "${base}/labels/${LABEL_ID}")
         curl_ec=$?
@@ -294,7 +323,7 @@ resolve_target_label() {
     else
         local resp enc_key curl_ec
         enc_key=$(_urlenc "$LABEL_KEY")
-        resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+        resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                    -H 'Accept: application/json' \
                    "${base}/labels?key=${enc_key}")
         curl_ec=$?
@@ -319,7 +348,7 @@ resolve_target_label() {
     # Fetch all hrefs sharing TARGET_LABEL_KEY (used by B2 same-key strip)
     local same_resp enc_target_key curl_ec
     enc_target_key=$(_urlenc "$TARGET_LABEL_KEY")
-    same_resp=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+    same_resp=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                     -H 'Accept: application/json' \
                     "${base}/labels?key=${enc_target_key}")
     curl_ec=$?
@@ -394,7 +423,7 @@ put_one_workload() {
         http_code="000"; curl_ec=0
     else
         http_code=$(curl ${CURL_OPTS} -X PUT \
-            -u "${API_USER}:${API_PASS}" \
+            -K "$CURL_AUTH_FILE" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json" \
             -d "$put_body" -o /dev/null -w "%{http_code}" \
@@ -561,6 +590,7 @@ if [[ "$JSON_OUT" == "1" && "$NON_INTERACTIVE" != "1" ]]; then
 fi
 
 load_credentials
+init_curl_auth_file
 
 
 # Interactive prompts (skipped if --non-interactive)
@@ -637,7 +667,7 @@ done
 
 if [[ "$needs_full" == "1" ]]; then
     SEARCH_STRATEGY="full_scan"
-    api_response=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+    api_response=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
         -H 'Accept: application/json' \
         "${WORKLOADS_BASE}?max_results=100000")
 else
@@ -648,11 +678,11 @@ else
         t=$(classify_term "$term")
         enc_term=$(_urlenc "$term")
         if [[ "$t" == "ip" ]]; then
-            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?ip_address=${enc_term}")
         else
-            part=$(curl ${CURL_OPTS} -u "${API_USER}:${API_PASS}" \
+            part=$(curl ${CURL_OPTS} -K "$CURL_AUTH_FILE" \
                 -H 'Accept: application/json' \
                 "${WORKLOADS_BASE}?hostname=${enc_term}")
         fi
