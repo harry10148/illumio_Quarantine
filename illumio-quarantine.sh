@@ -284,6 +284,16 @@ emit_cef() {
     local updated_ct="${#J_UPDATED[@]}"
     local failed_ct="${#J_FAILED[@]}"
 
+    # Reject symlinks on $AUDIT_FILE and ${AUDIT_FILE}.lock to prevent symlink-redirection attacks
+    if [[ -L "$AUDIT_FILE" ]]; then
+        echo "WARNING: refusing to write audit: $AUDIT_FILE is a symbolic link" >&2
+        return 1
+    fi
+    if [[ -L "${AUDIT_FILE}.lock" ]]; then
+        echo "WARNING: refusing to use audit lock: ${AUDIT_FILE}.lock is a symbolic link" >&2
+        return 1
+    fi
+
     local line
     line=$(printf 'CEF:0|Illumio|Quarantine|%s|quarantine.action|Illumio Quarantine Action|5|rt=%s dvchost=%s act=%s outcome=%s cs1Label=correlation_id cs1=%s cs2Label=audit_id cs2=%s cs3Label=reason cs3=%s cs4Label=targets cs4=%s cs5Label=label_key cs5=%s cs6Label=label_value cs6=%s cn1Label=updated_count cn1=%d cn2Label=failed_count cn2=%d cs7Label=dry_run cs7=%s' \
         "$VERSION" "$epoch_ms" "$pce_host" "${UPDATE_MODE:-}" "$outcome" \
